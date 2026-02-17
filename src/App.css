@@ -1,0 +1,157 @@
+body {
+  margin: 0;
+  font-family: Arial, Helvetica, sans-serif;
+  background: #f3f4f6;
+}
+
+/* Layout */
+.admin-layout {
+  display: flex;
+  height: 100vh;
+}
+
+/* Sidebar */
+.admin-sidebar {
+  width: 220px;
+  background: linear-gradient(180deg, #1e3a8a, #1e40af);
+  color: white;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 20px 15px;
+}
+
+/* Top and bottom areas */
+
+.sidebar-bottom {
+  margin-top: auto;
+}
+
+/* Menu */
+.menu {
+  padding: 12px;
+  cursor: pointer;
+  border-radius: 6px;
+  margin-bottom: 10px;
+  transition: background 0.2s;
+}
+
+.menu:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Content */
+.admin-content {
+  flex: 1;
+  padding: 40px;
+  background: #f9fafb;
+}
+
+.admin-content h3 {
+  margin-bottom: 20px;
+}
+
+input {
+  display: block;
+  width: 300px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+button {
+  padding: 10px 16px;
+  background: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #1d4ed8;
+}
+
+/* Staff list */
+.staff-row {
+  display: flex;
+  justify-content: space-between;
+  background: white;
+  padding: 12px;
+  margin-bottom: 10px;
+  border-radius: 4px;
+}
+
+/* Menu icon */
+.menu-icon {
+  font-size: 24px;
+  cursor: pointer;
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+/* Dropdown */
+.menu-dropdown {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 10px;
+}
+
+/* Logout */
+.menu.logout {
+  background: rgba(255, 255, 255, 0.1);
+  text-align: center;
+}
+
+.menu.logout:hover {
+  background: #dc2626;
+}
+/* LOGIN PAGE ONLY */
+.login-page {
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: #f3f4f6;
+}
+
+.login-box {
+  background: white;
+  padding: 40px;
+  width: 350px;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+}
+
+.login-box h2 {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.login-box input {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 15px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+}
+
+.login-box button {
+  width: 100%;
+  padding: 10px;
+  background: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.login-box button:hover {
+  background: #1d4ed8;
+}
+
+.error {
+  color: red;
+  text-align: center;
+  margin-bottom: 10px;
+}
+
