@@ -17,6 +17,7 @@ import TaskList from "./pages/tasks/TaskList";
 import CreateTaskStatus from "./pages/taskstatus/CreateTaskStatus";
 import TaskStatusList from "./pages/taskstatus/TaskStatusList";
 import EditTaskStatus from "./pages/taskstatus/EditTaskStatus";
+import EditStaffPage from "./pages/EditStaffPage";
 
 
 function App() {
@@ -43,6 +44,7 @@ function App() {
           <Route path="staff">
             <Route index element={<StaffPage />} />
             <Route path="create" element={<CreateStaffPage />} />
+             <Route path="edit/:id" element={<EditStaffPage />} />
           </Route>
 
           <Route path="roles" element={<RolesPage />} />

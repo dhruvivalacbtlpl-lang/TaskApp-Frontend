@@ -1,11 +1,11 @@
 import {
   Box,
-  Button,
-  Checkbox,
   Flex,
   Heading,
   Input,
   Select,
+  Button,
+  Checkbox,
   Table,
   Thead,
   Tbody,
@@ -16,10 +16,12 @@ import {
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
+import { useAuth } from "../context/AuthContext";
 
 export default function UpdateRole() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { refreshProfile } = useAuth();
 
   const [name, setName] = useState("");
   const [status, setStatus] = useState(1);
@@ -31,15 +33,15 @@ export default function UpdateRole() {
     fetchRole();
   }, [id]);
 
-  /* ================= FETCH PERMISSIONS ================= */
+  // FETCH PERMISSIONS
   const fetchPermissions = async () => {
     const res = await axios.get("http://localhost:5000/api/permissions");
 
-    // group permissions by module prefix exactly as in DB
     const grouped = {};
     res.data.forEach((p) => {
       const [module, action] = p.value.split("_");
-      const moduleKey = module.toLowerCase(); // lowercase for consistent keys
+      const moduleKey = module.toLowerCase();
+
       if (!grouped[moduleKey]) grouped[moduleKey] = new Set();
       grouped[moduleKey].add(action);
     });
@@ -52,7 +54,7 @@ export default function UpdateRole() {
     setModules(finalModules);
   };
 
-  /* ================= FETCH ROLE ================= */
+  // FETCH ROLE
   const fetchRole = async () => {
     const res = await axios.get(`http://localhost:5000/api/role/${id}`);
     setName(res.data.name);
@@ -60,7 +62,7 @@ export default function UpdateRole() {
     setPermissions(res.data.permissions || []);
   };
 
-  /* ================= TOGGLE PERMISSION ================= */
+  // TOGGLE PERMISSION
   const togglePerm = (module, action) => {
     const key = `${module}_${action}`;
     const readKey = `${module}_read`;
@@ -69,21 +71,16 @@ export default function UpdateRole() {
       let updated = [...prev];
 
       if (updated.includes(key)) {
-        // ❌ uncheck
         updated = updated.filter((p) => p !== key);
 
-        // if read is unchecked, remove create/update/delete
         if (action === "read") {
           ["create", "update", "delete"].forEach((a) => {
-            const actionKey = `${module}_${a}`;
-            updated = updated.filter((p) => p !== actionKey);
+            updated = updated.filter((p) => p !== `${module}_${a}`);
           });
         }
       } else {
-        // ✅ check
         updated.push(key);
 
-        // if create/update/delete is checked, auto add read
         if (action !== "read" && !updated.includes(readKey)) {
           updated.push(readKey);
         }
@@ -93,67 +90,42 @@ export default function UpdateRole() {
     });
   };
 
-  /* ================= TOGGLE ALL ================= */
-  const toggleAll = (module) => {
-    const actions = ["read", "create", "update", "delete"];
-    const modulePerms = actions.map((a) => `${module}_${a}`);
-
-    const allSelected = modulePerms.every((p) => permissions.includes(p));
-
-    setPermissions((prev) => {
-      let updated;
-      if (allSelected) {
-        // remove all
-        updated = prev.filter((p) => !modulePerms.includes(p));
-      } else {
-        // add all
-        updated = [...new Set([...prev, ...modulePerms])];
-
-        // ensure read is included if any create/update/delete is selected
-        if (!updated.includes(`${module}_read`)) {
-          updated.push(`${module}_read`);
-        }
-      }
-      return updated;
-    });
-  };
-
-  /* ================= UPDATE ================= */
+  // UPDATE ROLE
   const handleUpdate = async () => {
     try {
-      console.log("Saving permissions:", permissions); // debug log
       await axios.put(`http://localhost:5000/api/role/${id}`, {
         name,
         status,
         permissions,
       });
 
+      // 🔥 IMPORTANT — refresh logged-in user
+      await refreshProfile();
+
       navigate("/admin/roles");
     } catch (err) {
-      console.error("Error updating role:", err);
+      console.error("Update error:", err);
     }
   };
 
-  /* ================= UI ================= */
   return (
     <Box>
       <Heading size="md" mb="4">
         Update Role
       </Heading>
 
-      {/* ROLE INFO */}
       <Box bg="white" p="6" borderRadius="md" mb="6">
         <Flex gap="4">
           <Box flex="1">
             <Heading size="xs" mb="1">
-              Name *
+              Name
             </Heading>
             <Input value={name} onChange={(e) => setName(e.target.value)} />
           </Box>
 
-          <Box w="250px">
+          <Box w="200px">
             <Heading size="xs" mb="1">
-              Status *
+              Status
             </Heading>
             <Select
               value={status}
@@ -166,38 +138,28 @@ export default function UpdateRole() {
         </Flex>
       </Box>
 
-      {/* PERMISSION MATRIX */}
       <Box bg="white" p="6" borderRadius="md">
         <Table size="sm">
           <Thead>
             <Tr>
-              <Th>PERMISSION</Th>
-              <Th>ALL</Th>
+              <Th>MODULE</Th>
               <Th>READ</Th>
               <Th>CREATE</Th>
               <Th>UPDATE</Th>
               <Th>DELETE</Th>
             </Tr>
           </Thead>
-
           <Tbody>
             {Object.keys(modules).map((module) => (
               <Tr key={module}>
                 <Td>{module}</Td>
 
-                <Td>
-                  <Checkbox
-                    isChecked={["read", "create", "update", "delete"].every(
-                      (a) => permissions.includes(`${module}_${a}`)
-                    )}
-                    onChange={() => toggleAll(module)}
-                  />
-                </Td>
-
                 {["read", "create", "update", "delete"].map((action) => (
                   <Td key={action}>
                     <Checkbox
-                      isChecked={permissions.includes(`${module}_${action}`)}
+                      isChecked={permissions.includes(
+                        `${module}_${action}`
+                      )}
                       onChange={() => togglePerm(module, action)}
                     />
                   </Td>
@@ -207,16 +169,9 @@ export default function UpdateRole() {
           </Tbody>
         </Table>
 
-        <Flex justify="flex-end" mt="6" gap="3">
-          <Button
-            variant="outline"
-            onClick={() => navigate("/admin/roles")}
-          >
-            Cancel
-          </Button>
-
-          <Button colorScheme="red" onClick={handleUpdate}>
-            Update
+        <Flex justify="flex-end" mt="6">
+          <Button colorScheme="blue" onClick={handleUpdate}>
+            Update Role
           </Button>
         </Flex>
       </Box>

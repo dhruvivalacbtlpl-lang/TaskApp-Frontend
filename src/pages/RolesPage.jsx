@@ -21,14 +21,20 @@ import { EditIcon, DeleteIcon, AddIcon } from "@chakra-ui/icons";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import { useAuth } from "../context/AuthContext"; // ✅ ADD
+import { useAuth } from "../context/AuthContext";
 
 export default function RolesPage() {
   const navigate = useNavigate();
-
-  // ✅ AUTH
   const { hasPermission, user } = useAuth();
+
   const isAdmin = user?.role?.name?.toLowerCase() === "admin";
+
+  const canRead = isAdmin || hasPermission("role_read");
+  const canCreate = isAdmin || hasPermission("role_create");
+  const canUpdate = isAdmin || hasPermission("role_update");
+  const canDelete = isAdmin || hasPermission("role_delete");
+
+  const showActionColumn = canUpdate || canDelete;
 
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -36,9 +42,9 @@ export default function RolesPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(5);
 
-  // ✅ PROTECT PAGE (READ PERMISSION)
+  // ✅ Protect page
   useEffect(() => {
-    if (!isAdmin && !hasPermission("Role_read")) {
+    if (!canRead) {
       navigate("/admin");
     }
   }, []);
@@ -74,8 +80,8 @@ export default function RolesPage() {
       <Flex justify="space-between" align="center" mb={5}>
         <Heading size="md">Roles</Heading>
 
-        {/* ✅ CREATE PERMISSION */}
-        {(isAdmin || hasPermission("Role_create")) && (
+        {/* ✅ CREATE BUTTON */}
+        {canCreate && (
           <Button
             leftIcon={<AddIcon />}
             colorScheme="blue"
@@ -99,7 +105,9 @@ export default function RolesPage() {
                 <Th>Name</Th>
                 <Th>Status</Th>
                 <Th>Permissions Count</Th>
-                <Th textAlign="center">Action</Th>
+
+                {/* ✅ Hide entire column if no update/delete */}
+                {showActionColumn && <Th textAlign="center">Action</Th>}
               </Tr>
             </Thead>
 
@@ -110,41 +118,38 @@ export default function RolesPage() {
                   <Td fontWeight="500">{role.name}</Td>
 
                   <Td>
-                    <Badge
-                      colorScheme={role.status === 1 ? "green" : "red"}
-                    >
+                    <Badge colorScheme={role.status === 1 ? "green" : "red"}>
                       {role.status === 1 ? "Active" : "Inactive"}
                     </Badge>
                   </Td>
 
                   <Td>{role.permissions?.length || 0}</Td>
 
-                  <Td textAlign="center">
-                    <HStack justify="center">
-                      
-                      {/* ✅ UPDATE PERMISSION */}
-                      {(isAdmin || hasPermission("Role_update")) && (
-                        <IconButton
-                          size="sm"
-                          icon={<EditIcon />}
-                          onClick={() =>
-                            navigate(`/admin/roles/edit/${role._id}`)
-                          }
-                        />
-                      )}
+                  {/* ✅ Hide entire column if no update/delete */}
+                  {showActionColumn && (
+                    <Td textAlign="center">
+                      <HStack justify="center">
+                        {canUpdate && (
+                          <IconButton
+                            size="sm"
+                            icon={<EditIcon />}
+                            onClick={() =>
+                              navigate(`/admin/roles/edit/${role._id}`)
+                            }
+                          />
+                        )}
 
-                      {/* ✅ DELETE PERMISSION */}
-                      {(isAdmin || hasPermission("Role_delete")) && (
-                        <IconButton
-                          size="sm"
-                          colorScheme="red"
-                          icon={<DeleteIcon />}
-                          onClick={() => deleteRole(role._id)}
-                        />
-                      )}
-
-                    </HStack>
-                  </Td>
+                        {canDelete && (
+                          <IconButton
+                            size="sm"
+                            colorScheme="red"
+                            icon={<DeleteIcon />}
+                            onClick={() => deleteRole(role._id)}
+                          />
+                        )}
+                      </HStack>
+                    </Td>
+                  )}
                 </Tr>
               ))}
             </Tbody>

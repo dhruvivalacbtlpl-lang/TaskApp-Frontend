@@ -22,78 +22,105 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 
-export default function PermissionPage() {
+export default function PermissionsPage() {
   const navigate = useNavigate();
+  const { hasPermission, user, loading } = useAuth();
 
-  // ✅ AUTH
-  const { hasPermission, user } = useAuth();
   const isAdmin = user?.role?.name?.toLowerCase() === "admin";
 
   const [permissions, setPermissions] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(true);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(5);
 
-  // ✅ PROTECT PAGE (READ PERMISSION)
+  /* ================= PROTECT PAGE ================= */
+
   useEffect(() => {
-    if (!isAdmin && !hasPermission("permission_read")) {
+    if (loading) return;
+
+    if (!isAdmin && !hasPermission("permissions_read")) {
       navigate("/admin");
     }
-  }, []);
+  }, [loading, user]);
 
   /* ================= FETCH ================= */
+
   const fetchPermissions = async () => {
     try {
-      setLoading(true);
-      const res = await axios.get("http://localhost:5000/api/permissions");
+      setDataLoading(true);
+      const res = await axios.get(
+        "http://localhost:5000/api/permissions"
+      );
       setPermissions(res.data || []);
     } catch (err) {
-      console.error(err);
+      console.error("Permission fetch error:", err);
     } finally {
-      setLoading(false);
+      setDataLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchPermissions();
-  }, []);
+    if (!loading) {
+      fetchPermissions();
+    }
+  }, [loading]);
 
   /* ================= DELETE ================= */
+
   const handleDelete = async (id) => {
     if (!window.confirm("Are you sure?")) return;
-    await axios.delete(`http://localhost:5000/api/permissions/${id}`);
-    fetchPermissions();
+
+    try {
+      await axios.delete(
+        `http://localhost:5000/api/permissions/${id}`
+      );
+      fetchPermissions();
+    } catch (err) {
+      console.error("Delete error:", err);
+    }
   };
 
   /* ================= PAGINATION ================= */
+
   const startIndex = (currentPage - 1) * rowsPerPage;
   const currentPermissions = permissions.slice(
     startIndex,
     startIndex + rowsPerPage
   );
-  const totalPages = Math.ceil(permissions.length / rowsPerPage);
+
+  const totalPages =
+    Math.ceil(permissions.length / rowsPerPage) || 1;
+
+  /* ================= GLOBAL LOADING ================= */
+
+  if (loading) {
+    return (
+      <Flex justify="center" align="center" h="60vh">
+        <Spinner size="xl" />
+      </Flex>
+    );
+  }
 
   return (
     <Box bg="white" p={6} borderRadius="md" boxShadow="md">
-      {/* HEADER */}
       <Flex justify="space-between" align="center" mb={5}>
         <Heading size="md">Permissions</Heading>
 
-        {/* ✅ CREATE PERMISSION */}
-        {(isAdmin || hasPermission("permission_create")) && (
+        {(isAdmin || hasPermission("permissions_create")) && (
           <Button
             leftIcon={<AddIcon />}
             colorScheme="blue"
-            onClick={() => navigate("/admin/permissions/create")}
+            onClick={() =>
+              navigate("/admin/permissions/create")
+            }
           >
             Create Permission
           </Button>
         )}
       </Flex>
 
-      {/* TABLE */}
-      {loading ? (
+      {dataLoading ? (
         <Flex justify="center" py={10}>
           <Spinner size="lg" />
         </Flex>
@@ -107,10 +134,9 @@ export default function PermissionPage() {
                 <Th>Value</Th>
                 <Th>Status</Th>
 
-                {/* ⭐ HIDE ACTION COLUMN IF NO UPDATE/DELETE */}
                 {(isAdmin ||
-                  hasPermission("permission_update") ||
-                  hasPermission("permission_delete")) && (
+                  hasPermission("permissions_update") ||
+                  hasPermission("permissions_delete")) && (
                   <Th textAlign="center">Action</Th>
                 )}
               </Tr>
@@ -122,24 +148,25 @@ export default function PermissionPage() {
                   <Td>{startIndex + i + 1}</Td>
                   <Td fontWeight="500">{perm.name}</Td>
                   <Td>{perm.value}</Td>
-
                   <Td>
                     <Badge
-                      colorScheme={perm.status === 1 ? "green" : "red"}
+                      colorScheme={
+                        perm.status === 1 ? "green" : "red"
+                      }
                     >
-                      {perm.status === 1 ? "Active" : "Inactive"}
+                      {perm.status === 1
+                        ? "Active"
+                        : "Inactive"}
                     </Badge>
                   </Td>
 
-                  {/* ⭐ ACTION BUTTONS */}
                   {(isAdmin ||
-                    hasPermission("permission_update") ||
-                    hasPermission("permission_delete")) && (
+                    hasPermission("permissions_update") ||
+                    hasPermission("permissions_delete")) && (
                     <Td textAlign="center">
                       <HStack justify="center">
-                        
                         {(isAdmin ||
-                          hasPermission("permission_update")) && (
+                          hasPermission("permissions_update")) && (
                           <IconButton
                             size="sm"
                             icon={<EditIcon />}
@@ -152,7 +179,7 @@ export default function PermissionPage() {
                         )}
 
                         {(isAdmin ||
-                          hasPermission("permission_delete")) && (
+                          hasPermission("permissions_delete")) && (
                           <IconButton
                             size="sm"
                             colorScheme="red"
@@ -162,17 +189,27 @@ export default function PermissionPage() {
                             }
                           />
                         )}
-
                       </HStack>
                     </Td>
                   )}
                 </Tr>
               ))}
+
+              {currentPermissions.length === 0 && (
+                <Tr>
+                  <Td colSpan="5" textAlign="center">
+                    No permissions found
+                  </Td>
+                </Tr>
+              )}
             </Tbody>
           </Table>
 
-          {/* 🔥 SAME PAGINATION AS ROLES PAGE */}
-          <Flex mt={4} justify="space-between" align="center">
+          <Flex
+            mt={4}
+            justify="space-between"
+            align="center"
+          >
             <Text fontSize="sm">
               Page {currentPage} of {totalPages}
             </Text>
@@ -197,7 +234,9 @@ export default function PermissionPage() {
             <HStack>
               <Button
                 size="sm"
-                onClick={() => setCurrentPage((p) => p - 1)}
+                onClick={() =>
+                  setCurrentPage((p) => p - 1)
+                }
                 isDisabled={currentPage === 1}
               >
                 ◀
@@ -205,7 +244,9 @@ export default function PermissionPage() {
 
               <Button
                 size="sm"
-                onClick={() => setCurrentPage((p) => p + 1)}
+                onClick={() =>
+                  setCurrentPage((p) => p + 1)
+                }
                 isDisabled={currentPage === totalPages}
               >
                 ▶

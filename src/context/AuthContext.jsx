@@ -5,6 +5,7 @@ const AuthContext = createContext();
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   // 🔥 LOAD PROFILE
   const refreshProfile = async () => {
@@ -13,9 +14,13 @@ export function AuthProvider({ children }) {
         "http://localhost:5000/api/auth/profile",
         { withCredentials: true }
       );
+
       setUser(res.data);
     } catch (err) {
-      console.error(err);
+      console.error("Profile fetch error:", err);
+      setUser(null);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -31,18 +36,23 @@ export function AuthProvider({ children }) {
     setUser(null);
   };
 
+  // ✅ SAFE PERMISSION CHECK
   const hasPermission = (perm) => {
     if (!user || !user.role) return false;
 
-    // ADMIN FULL ACCESS
+    // Admin full access
     if (user.role.name?.toLowerCase() === "admin") return true;
 
-    return user?.role?.permissions?.includes(perm.toLowerCase());
+    if (!user.role.permissions) return false;
+
+    return user.role.permissions.some(
+      (p) => p?.toLowerCase().trim() === perm.toLowerCase().trim()
+    );
   };
 
   return (
     <AuthContext.Provider
-      value={{ user, login, logout, hasPermission, refreshProfile }}
+      value={{ user, loading, login, logout, hasPermission, refreshProfile }}
     >
       {children}
     </AuthContext.Provider>
