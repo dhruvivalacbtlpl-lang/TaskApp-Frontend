@@ -8,6 +8,7 @@ import {
 } from "@chakra-ui/react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import NotificationBell from "../components/NotificationBell"; // ✅ import
 
 function AdminLayout() {
   const navigate = useNavigate();
@@ -67,7 +68,6 @@ function AdminLayout() {
             </NavLink>
           )}
 
-          {/* ✅ TASK STATUS (ADDED) */}
           {(isAdmin || hasPermission("taskstatus_read")) && (
             <NavLink to="/admin/task-status" style={linkStyle}>
               Task Status
@@ -90,6 +90,9 @@ function AdminLayout() {
           <Text>{user?.name || "Admin User"}</Text>
 
           <HStack spacing="3">
+            {/* ✅ Notification bell — sits between name and Profile button */}
+            <NotificationBell />
+
             <Button
               size="sm"
               colorScheme="blue"
@@ -113,3 +116,4 @@ function AdminLayout() {
 }
 
 export default AdminLayout;
+  

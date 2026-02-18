@@ -15,6 +15,7 @@ import {
 } from "@chakra-ui/react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { useSocket } from "../../hooks/useSocket";
 
 export default function TaskList() {
   const [tasks, setTasks] = useState([]);
@@ -48,14 +49,10 @@ export default function TaskList() {
   /* ================= STATUS COLOR ================= */
   const getStatusColor = (status) => {
     switch (status) {
-      case "PENDING":
-        return "yellow";
-      case "IN_PROGRESS":
-        return "blue";
-      case "COMPLETED":
-        return "green";
-      default:
-        return "gray";
+      case "PENDING": return "yellow";
+      case "IN_PROGRESS": return "blue";
+      case "COMPLETED": return "green";
+      default: return "gray";
     }
   };
 
@@ -68,7 +65,6 @@ export default function TaskList() {
         axios.get("http://localhost:5000/api/staff"),
         axios.get("http://localhost:5000/api/task-status"),
       ]);
-
       setTasks(taskRes.data || []);
       setStaffList(staffRes.data || []);
       setTaskStatuses(statusRes.data || []);
@@ -80,6 +76,25 @@ export default function TaskList() {
   useEffect(() => {
     if (canRead) fetchData();
   }, [canRead]);
+
+  /* ================= ✅ REAL-TIME SOCKET ================= */
+
+  // New task → add to top instantly
+  useSocket("task:created", (newTask) => {
+    setTasks((prev) => [newTask, ...prev]);
+  });
+
+  // Task updated → replace in list instantly
+  useSocket("task:updated", (updatedTask) => {
+    setTasks((prev) =>
+      prev.map((t) => (t._id === updatedTask._id ? updatedTask : t))
+    );
+  });
+
+  // Task deleted → remove from list instantly
+  useSocket("task:deleted", ({ _id }) => {
+    setTasks((prev) => prev.filter((t) => t._id !== _id));
+  });
 
   /* ❌ NO READ PERMISSION */
   if (!canRead) {
@@ -94,44 +109,29 @@ export default function TaskList() {
 
   /* ================= FILTER ================= */
   const filteredTasks = tasks.filter((task) => {
-    const matchSearch = task.name
-      ?.toLowerCase()
-      .includes(search.toLowerCase());
-
-    const matchStatus = statusFilter
-      ? task.taskStatus?._id === statusFilter
-      : true;
-
+    const matchSearch = task.name?.toLowerCase().includes(search.toLowerCase());
+    const matchStatus = statusFilter ? task.taskStatus?._id === statusFilter : true;
     const matchAssignee =
       canFilterByAssignee && assigneeFilter
         ? task.assignee?._id === assigneeFilter
         : true;
-
     return matchSearch && matchStatus && matchAssignee;
   });
 
   /* ================= PAGINATION ================= */
-  const totalPages = Math.max(
-    1,
-    Math.ceil(filteredTasks.length / rowsPerPage)
-  );
-
+  const totalPages = Math.max(1, Math.ceil(filteredTasks.length / rowsPerPage));
   const startIndex = (currentPage - 1) * rowsPerPage;
-  const paginatedTasks = filteredTasks.slice(
-    startIndex,
-    startIndex + rowsPerPage
-  );
+  const paginatedTasks = filteredTasks.slice(startIndex, startIndex + rowsPerPage);
 
   const handlePrev = () => currentPage > 1 && setCurrentPage(currentPage - 1);
-  const handleNext = () =>
-    currentPage < totalPages && setCurrentPage(currentPage + 1);
+  const handleNext = () => currentPage < totalPages && setCurrentPage(currentPage + 1);
 
   /* ================= DELETE ================= */
   const handleDelete = async (id) => {
     if (!window.confirm("Are you sure?")) return;
     try {
       await axios.delete(`http://localhost:5000/api/tasks/${id}`);
-      setTasks(tasks.filter((t) => t._id !== id));
+      // ✅ No need to manually filter — socket "task:deleted" handles it
       toast({ title: "Task deleted", status: "success" });
     } catch {
       toast({ title: "Delete failed", status: "error" });
@@ -142,15 +142,9 @@ export default function TaskList() {
     <Box>
       {/* HEADER */}
       <Flex justify="space-between" mb={4} align="center">
-        <Heading size="lg" color="blue.700">
-          Tasks
-        </Heading>
-
+        <Heading size="lg" color="blue.700">Tasks</Heading>
         {canCreate && (
-          <Button
-            onClick={() => navigate("/admin/tasks/create")}
-            colorScheme="blue"
-          >
+          <Button onClick={() => navigate("/admin/tasks/create")} colorScheme="blue">
             + New Task
           </Button>
         )}
@@ -161,43 +155,28 @@ export default function TaskList() {
         <input
           placeholder="Search tasks..."
           value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setCurrentPage(1);
-          }}
+          onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }}
           style={styles.input}
         />
-
         <Select
           placeholder="Filter by Status"
           width="200px"
           value={statusFilter}
-          onChange={(e) => {
-            setStatusFilter(e.target.value);
-            setCurrentPage(1);
-          }}
+          onChange={(e) => { setStatusFilter(e.target.value); setCurrentPage(1); }}
         >
           {taskStatuses.map((status) => (
-            <option key={status._id} value={status._id}>
-              {status.name}
-            </option>
+            <option key={status._id} value={status._id}>{status.name}</option>
           ))}
         </Select>
-
         {canFilterByAssignee && (
           <Select
             placeholder="Filter by Assignee"
             width="200px"
             value={assigneeFilter}
-            onChange={(e) => {
-              setAssigneeFilter(e.target.value);
-              setCurrentPage(1);
-            }}
+            onChange={(e) => { setAssigneeFilter(e.target.value); setCurrentPage(1); }}
           >
             {staffList.map((s) => (
-              <option key={s._id} value={s._id}>
-                {s.name}
-              </option>
+              <option key={s._id} value={s._id}>{s.name}</option>
             ))}
           </Select>
         )}
@@ -212,15 +191,11 @@ export default function TaskList() {
               <th style={styles.th}>Title</th>
               <th style={styles.th}>Status</th>
               <th style={styles.th}>Assignee</th>
-              {/* ✅ SHOW ACTIONS COLUMN ONLY IF UPDATE OR DELETE */}
               {(canUpdate || canDelete) && (
-                <th style={{ ...styles.th, textAlign: "center" }}>
-                  Actions
-                </th>
+                <th style={{ ...styles.th, textAlign: "center" }}>Actions</th>
               )}
             </tr>
           </thead>
-
           <tbody>
             {paginatedTasks.map((task, index) => (
               <tr key={task._id}>
@@ -232,26 +207,16 @@ export default function TaskList() {
                   </Badge>
                 </td>
                 <td style={styles.td}>{task.assignee?.name || "-"}</td>
-
                 {(canUpdate || canDelete) && (
                   <td style={{ ...styles.td, textAlign: "center" }}>
                     <HStack justify="center">
                       {canUpdate && (
-                        <Button
-                          size="sm"
-                          onClick={() =>
-                            navigate(`/admin/tasks/edit/${task._id}`)
-                          }
-                        >
+                        <Button size="sm" onClick={() => navigate(`/admin/tasks/edit/${task._id}`)}>
                           ✏️
                         </Button>
                       )}
                       {canDelete && (
-                        <Button
-                          size="sm"
-                          colorScheme="red"
-                          onClick={() => handleDelete(task._id)}
-                        >
+                        <Button size="sm" colorScheme="red" onClick={() => handleDelete(task._id)}>
                           🗑
                         </Button>
                       )}
@@ -266,38 +231,23 @@ export default function TaskList() {
 
       {/* PAGINATION */}
       <Flex mt={4} justify="space-between" align="center">
-        <Text fontSize="sm">
-          Page {currentPage} of {totalPages}
-        </Text>
-
+        <Text fontSize="sm">Page {currentPage} of {totalPages}</Text>
         <HStack>
           <Text fontSize="sm">Rows</Text>
           <Select
             size="sm"
             width="80px"
             value={rowsPerPage}
-            onChange={(e) => {
-              setRowsPerPage(Number(e.target.value));
-              setCurrentPage(1);
-            }}
+            onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}
           >
             <option value={5}>5</option>
             <option value={10}>10</option>
             <option value={15}>15</option>
           </Select>
         </HStack>
-
         <HStack>
-          <Button size="sm" onClick={handlePrev} isDisabled={currentPage === 1}>
-            ◀
-          </Button>
-          <Button
-            size="sm"
-            onClick={handleNext}
-            isDisabled={currentPage === totalPages}
-          >
-            ▶
-          </Button>
+          <Button size="sm" onClick={handlePrev} isDisabled={currentPage === 1}>◀</Button>
+          <Button size="sm" onClick={handleNext} isDisabled={currentPage === totalPages}>▶</Button>
         </HStack>
       </Flex>
     </Box>
