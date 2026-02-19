@@ -1,10 +1,11 @@
-// src/pages/TaskList.jsx
 import { useEffect, useState } from "react";
 import axios from "axios";
 import {
-  Box, Flex, Heading, Button, Badge,
-  HStack, useToast, Text, Select, Spinner,
+  Box, Flex, Heading, Button, Badge, HStack, Text,
+  Select, Spinner, IconButton, Alert, AlertIcon, AlertDescription,
 } from "@chakra-ui/react";
+import { ChevronLeftIcon, ChevronRightIcon } from "@chakra-ui/icons";
+import { MdAdd, MdEdit, MdDelete } from "react-icons/md";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useSocket } from "../../hooks/useSocket";
@@ -14,18 +15,16 @@ export default function TaskList() {
   const [staffList, setStaffList] = useState([]);
   const [taskStatuses, setTaskStatuses] = useState([]);
   const [loading, setLoading] = useState(true);
-
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [assigneeFilter, setAssigneeFilter] = useState("");
-
-  // ✅ Track which cell is being updated to show spinner
   const [updatingId, setUpdatingId] = useState(null);
+  const [successMsg, setSuccessMsg] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
 
   const navigate = useNavigate();
-  const toast = useToast();
   const { user, hasPermission } = useAuth();
   const isAdmin = user?.role?.name?.toLowerCase() === "admin";
 
@@ -44,20 +43,25 @@ export default function TaskList() {
     }
   };
 
-  /* ================= FETCH ================= */
+  const showMsg = (type, msg) => {
+    if (type === "success") { setSuccessMsg(msg); setErrorMsg(""); }
+    else { setErrorMsg(msg); setSuccessMsg(""); }
+    setTimeout(() => { setSuccessMsg(""); setErrorMsg(""); }, 3000);
+  };
+
   const fetchData = async () => {
     setLoading(true);
     try {
       const [taskRes, staffRes, statusRes] = await Promise.all([
-        axios.get("http://localhost:5000/api/tasks"),
-        axios.get("http://localhost:5000/api/staff"),
-        axios.get("http://localhost:5000/api/task-status"),
+        axios.get("/tasks"),
+        axios.get("/staff"),
+        axios.get("/task-status"),
       ]);
       setTasks(taskRes.data || []);
       setStaffList(staffRes.data || []);
       setTaskStatuses(statusRes.data || []);
     } catch {
-      toast({ title: "Error fetching data", status: "error" });
+      showMsg("error", "Error fetching data. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -67,7 +71,6 @@ export default function TaskList() {
     if (canRead) fetchData();
   }, [canRead]);
 
-  /* ================= SOCKET ================= */
   useSocket("task:created", (newTask) => {
     setTasks((prev) => [newTask, ...prev]);
   });
@@ -78,7 +81,6 @@ export default function TaskList() {
     setTasks((prev) => prev.filter((t) => t._id !== _id));
   });
 
-  /* ================= INLINE STATUS CHANGE ================= */
   const handleStatusChange = async (taskId, newStatusId) => {
     setUpdatingId(taskId + "status");
     try {
@@ -88,20 +90,15 @@ export default function TaskList() {
       formData.append("description", task.description);
       formData.append("assignee", task.assignee?._id || task.assignee);
       formData.append("taskStatus", newStatusId);
-
-      await axios.put(`http://localhost:5000/api/tasks/${taskId}`, formData, {
-        withCredentials: true,
-      });
-      // socket will update the list automatically
-      toast({ title: "Status updated", status: "success", duration: 1500 });
+      await axios.put(`/tasks/${taskId}`, formData, { withCredentials: true });
+      showMsg("success", "Status updated successfully.");
     } catch {
-      toast({ title: "Failed to update status", status: "error" });
+      showMsg("error", "Failed to update status.");
     } finally {
       setUpdatingId(null);
     }
   };
 
-  /* ================= INLINE ASSIGNEE CHANGE ================= */
   const handleAssigneeChange = async (taskId, newAssigneeId) => {
     setUpdatingId(taskId + "assignee");
     try {
@@ -111,39 +108,35 @@ export default function TaskList() {
       formData.append("description", task.description);
       formData.append("assignee", newAssigneeId);
       formData.append("taskStatus", task.taskStatus?._id || task.taskStatus);
-
-      await axios.put(`http://localhost:5000/api/tasks/${taskId}`, formData, {
-        withCredentials: true,
-      });
-      // socket will update the list automatically
-      toast({ title: "Assignee updated", status: "success", duration: 1500 });
+      await axios.put(`/tasks/${taskId}`, formData, { withCredentials: true });
+      showMsg("success", "Assignee updated successfully.");
     } catch {
-      toast({ title: "Failed to update assignee", status: "error" });
+      showMsg("error", "Failed to update assignee.");
     } finally {
       setUpdatingId(null);
     }
   };
 
-  /* ================= DELETE ================= */
   const handleDelete = async (id) => {
-    if (!window.confirm("Are you sure?")) return;
     try {
-      await axios.delete(`http://localhost:5000/api/tasks/${id}`, { withCredentials: true });
-      toast({ title: "Task deleted", status: "success" });
+      await axios.delete(`/tasks/${id}`, { withCredentials: true });
+      showMsg("success", "Task deleted successfully.");
     } catch {
-      toast({ title: "Delete failed", status: "error" });
+      showMsg("error", "Failed to delete task.");
     }
   };
 
   if (!canRead) {
     return (
       <Box p={6}>
-        <Text fontSize="lg" color="red.500">❌ You don't have permission to view this page</Text>
+        <Alert status="error" borderRadius="md">
+          <AlertIcon />
+          <AlertDescription>You don't have permission to view this page.</AlertDescription>
+        </Alert>
       </Box>
     );
   }
 
-  /* ================= FILTER ================= */
   const filteredTasks = tasks.filter((task) => {
     const matchSearch = task.name?.toLowerCase().includes(search.toLowerCase());
     const matchStatus = statusFilter ? task.taskStatus?._id === statusFilter : true;
@@ -151,24 +144,37 @@ export default function TaskList() {
     return matchSearch && matchStatus && matchAssignee;
   });
 
-  /* ================= PAGINATION ================= */
   const totalPages = Math.max(1, Math.ceil(filteredTasks.length / rowsPerPage));
   const startIndex = (currentPage - 1) * rowsPerPage;
   const paginatedTasks = filteredTasks.slice(startIndex, startIndex + rowsPerPage);
 
   return (
     <Box>
-      {/* HEADER */}
       <Flex justify="space-between" mb={4} align="center">
         <Heading size="lg" color="blue.700">Tasks</Heading>
         {canCreate && (
-          <Button onClick={() => navigate("/admin/tasks/create")} colorScheme="blue">
-            + New Task
+          <Button
+            leftIcon={<MdAdd size={18} />}
+            colorScheme="blue"
+            onClick={() => navigate("/admin/tasks/create")}
+          >
+            New Task
           </Button>
         )}
       </Flex>
 
-      {/* FILTER BAR */}
+      {/* ✅ Messages */}
+      {successMsg && (
+        <Alert status="success" borderRadius="md" mb={4}>
+          <AlertIcon /><AlertDescription>{successMsg}</AlertDescription>
+        </Alert>
+      )}
+      {errorMsg && (
+        <Alert status="error" borderRadius="md" mb={4}>
+          <AlertIcon /><AlertDescription>{errorMsg}</AlertDescription>
+        </Alert>
+      )}
+
       <Flex gap={3} mb={4} wrap="wrap">
         <input
           placeholder="Search tasks..."
@@ -192,7 +198,6 @@ export default function TaskList() {
         )}
       </Flex>
 
-      {/* TABLE */}
       <Box bg="white" p={4} borderRadius="md">
         {loading ? (
           <Flex justify="center" py={12}>
@@ -200,9 +205,12 @@ export default function TaskList() {
           </Flex>
         ) : filteredTasks.length === 0 ? (
           <Flex direction="column" align="center" py={12} color="gray.400">
-            <Text fontSize="3xl">📋</Text>
             <Text fontSize="sm" fontWeight="medium">No tasks found</Text>
-            <Text fontSize="xs">{search || statusFilter || assigneeFilter ? "Try clearing your filters" : "Create your first task to get started"}</Text>
+            <Text fontSize="xs">
+              {search || statusFilter || assigneeFilter
+                ? "Try clearing your filters"
+                : "Create your first task to get started"}
+            </Text>
           </Flex>
         ) : (
           <table style={styles.table}>
@@ -222,21 +230,16 @@ export default function TaskList() {
                 <tr key={task._id}>
                   <td style={styles.td}>{startIndex + index + 1}</td>
                   <td style={styles.td}>{task.name}</td>
-
-                  {/* ✅ INLINE STATUS DROPDOWN */}
                   <td style={styles.td}>
                     {canUpdate ? (
-                      <Select
-                        size="xs"
-                        width="140px"
+                      <Select size="xs" width="140px"
                         value={task.taskStatus?._id || ""}
                         isDisabled={updatingId === task._id + "status"}
                         onChange={(e) => handleStatusChange(task._id, e.target.value)}
                         borderColor={
                           task.taskStatus?.name === "COMPLETED" ? "green.400" :
                           task.taskStatus?.name === "IN_PROGRESS" ? "blue.400" : "yellow.400"
-                        }
-                      >
+                        }>
                         {taskStatuses.map((s) => (
                           <option key={s._id} value={s._id}>{s.name}</option>
                         ))}
@@ -247,17 +250,12 @@ export default function TaskList() {
                       </Badge>
                     )}
                   </td>
-
-                  {/* ✅ INLINE ASSIGNEE DROPDOWN */}
                   <td style={styles.td}>
                     {canUpdate ? (
-                      <Select
-                        size="xs"
-                        width="140px"
+                      <Select size="xs" width="140px"
                         value={task.assignee?._id || ""}
                         isDisabled={updatingId === task._id + "assignee"}
-                        onChange={(e) => handleAssigneeChange(task._id, e.target.value)}
-                      >
+                        onChange={(e) => handleAssigneeChange(task._id, e.target.value)}>
                         {staffList.map((s) => (
                           <option key={s._id} value={s._id}>{s.name}</option>
                         ))}
@@ -266,19 +264,26 @@ export default function TaskList() {
                       <Text>{task.assignee?.name || "—"}</Text>
                     )}
                   </td>
-
                   {(canUpdate || canDelete) && (
                     <td style={{ ...styles.td, textAlign: "center" }}>
                       <HStack justify="center">
                         {canUpdate && (
-                          <Button size="sm" onClick={() => navigate(`/admin/tasks/edit/${task._id}`)}>
-                            ✏️
-                          </Button>
+                          <IconButton
+                            size="sm"
+                            icon={<MdEdit size={16} />}
+                            aria-label="Edit Task"
+                            colorScheme="gray"
+                            onClick={() => navigate(`/admin/tasks/edit/${task._id}`)}
+                          />
                         )}
                         {canDelete && (
-                          <Button size="sm" colorScheme="red" onClick={() => handleDelete(task._id)}>
-                            🗑
-                          </Button>
+                          <IconButton
+                            size="sm"
+                            colorScheme="red"
+                            icon={<MdDelete size={16} />}
+                            aria-label="Delete Task"
+                            onClick={() => handleDelete(task._id)}
+                          />
                         )}
                       </HStack>
                     </td>
@@ -290,7 +295,6 @@ export default function TaskList() {
         )}
       </Box>
 
-      {/* PAGINATION */}
       {!loading && filteredTasks.length > 0 && (
         <Flex mt={4} justify="space-between" align="center">
           <Text fontSize="sm">Page {currentPage} of {totalPages}</Text>
@@ -304,8 +308,14 @@ export default function TaskList() {
             </Select>
           </HStack>
           <HStack>
-            <Button size="sm" onClick={() => setCurrentPage(p => p - 1)} isDisabled={currentPage === 1}>◀</Button>
-            <Button size="sm" onClick={() => setCurrentPage(p => p + 1)} isDisabled={currentPage === totalPages}>▶</Button>
+            <IconButton size="sm" icon={<ChevronLeftIcon />}
+              isDisabled={currentPage === 1}
+              onClick={() => setCurrentPage(p => p - 1)}
+              aria-label="Previous page" />
+            <IconButton size="sm" icon={<ChevronRightIcon />}
+              isDisabled={currentPage === totalPages}
+              onClick={() => setCurrentPage(p => p + 1)}
+              aria-label="Next page" />
           </HStack>
         </Flex>
       )}

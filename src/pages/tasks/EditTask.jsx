@@ -2,14 +2,14 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   Box, FormControl, FormLabel, Input, Select, Button,
-  useToast, Spinner, Text, Image, Flex,
+  Spinner, Text, Image, Flex, Alert, AlertIcon, AlertDescription,
 } from "@chakra-ui/react";
 import axios from "axios";
 
-const API_BASE = "http://localhost:5000";
+const API_BASE = "https://w2ml73xv-5000.inc1.devtunnels.ms";
 
 function resolveMediaUrl(media) {
-  if (!media || typeof media !== "string") return null; // ✅ safe check
+  if (!media || typeof media !== "string") return null;
   if (media.startsWith("http://") || media.startsWith("https://")) return media;
   return `${API_BASE}${media}`;
 }
@@ -23,7 +23,6 @@ function isVideo(url) {
 export default function EditTask() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const toast = useToast();
 
   const [loading, setLoading] = useState(true);
   const [lightbox, setLightbox] = useState(null);
@@ -36,25 +35,26 @@ export default function EditTask() {
   const [existingMedia, setExistingMedia] = useState([]);
   const [statuses, setStatuses] = useState([]);
   const [staffList, setStaffList] = useState([]);
+  const [successMsg, setSuccessMsg] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         const [taskRes, statusRes, staffRes] = await Promise.all([
-          axios.get(`${API_BASE}/api/tasks/${id}`, { withCredentials: true }),
-          axios.get(`${API_BASE}/api/task-status`, { withCredentials: true }),
-          axios.get(`${API_BASE}/api/staff`, { withCredentials: true }),
+          axios.get(`/tasks/${id}`, { withCredentials: true }),
+          axios.get(`/task-status`, { withCredentials: true }),
+          axios.get(`/staff`, { withCredentials: true }),
         ]);
         const task = taskRes.data;
         setName(task.name || "");
         setDescription(task.description || "");
         setTaskStatus(task.taskStatus?._id || "");
         setAssignee(task.assignee?._id || "");
-
-        // ✅ safely handle string, array, or null
         let mediaArr = [];
         if (Array.isArray(task.media)) {
-          mediaArr = task.media.filter(Boolean); // remove nulls
+          mediaArr = task.media.filter(Boolean);
         } else if (typeof task.media === "string" && task.media) {
           mediaArr = [task.media];
         }
@@ -62,8 +62,7 @@ export default function EditTask() {
         setStatuses(statusRes.data || []);
         setStaffList(staffRes.data || []);
       } catch (err) {
-        console.error("EditTask fetch error:", err);
-        toast({ title: "Failed to load task", status: "error" });
+        setErrorMsg("Failed to load task. Please try again.");
       } finally {
         setLoading(false);
       }
@@ -71,12 +70,10 @@ export default function EditTask() {
     fetchData();
   }, [id]);
 
-  /* ================= FILE CHANGE ================= */
   const handleFileChange = (e) => {
     const files = Array.from(e.target.files);
     if (!files.length) return;
     setNewFiles(files);
-
     const previews = [];
     let loaded = 0;
     files.forEach((file) => {
@@ -97,25 +94,27 @@ export default function EditTask() {
     });
   };
 
-  /* ================= SUBMIT ================= */
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setErrorMsg(""); setSuccessMsg("");
     const formData = new FormData();
     formData.append("name", name);
     formData.append("description", description);
     formData.append("assignee", assignee);
     formData.append("taskStatus", taskStatus);
     newFiles.forEach((file) => formData.append("media", file));
-
     try {
-      await axios.put(`${API_BASE}/api/tasks/${id}`, formData, {
+      setSubmitting(true);
+      await axios.put(`/tasks/${id}`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
         withCredentials: true,
       });
-      toast({ title: "Task updated successfully", status: "success" });
-      navigate("/admin/tasks");
+      setSuccessMsg("Task updated successfully!");
+      setTimeout(() => navigate("/admin/tasks"), 1500);
     } catch {
-      toast({ title: "Update failed", status: "error" });
+      setErrorMsg("Update failed. Please try again.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -125,10 +124,22 @@ export default function EditTask() {
     ? newPreviews
     : existingMedia
         .map((m) => ({ url: resolveMediaUrl(m), isVideo: isVideo(m) }))
-        .filter((item) => item.url); // ✅ filter out nulls
+        .filter((item) => item.url);
 
   return (
     <Box maxW="md" bg="white" p={6} borderRadius="md" shadow="sm">
+
+      {/* ✅ Messages */}
+      {successMsg && (
+        <Alert status="success" borderRadius="md" mb={4}>
+          <AlertIcon /><AlertDescription>{successMsg}</AlertDescription>
+        </Alert>
+      )}
+      {errorMsg && (
+        <Alert status="error" borderRadius="md" mb={4}>
+          <AlertIcon /><AlertDescription>{errorMsg}</AlertDescription>
+        </Alert>
+      )}
 
       {/* LIGHTBOX */}
       {lightbox && (
@@ -156,12 +167,10 @@ export default function EditTask() {
           <FormLabel>Title</FormLabel>
           <Input value={name} onChange={(e) => setName(e.target.value)} />
         </FormControl>
-
         <FormControl mb={3} isRequired>
           <FormLabel>Description</FormLabel>
           <Input value={description} onChange={(e) => setDescription(e.target.value)} />
         </FormControl>
-
         <FormControl mb={3} isRequired>
           <FormLabel>Status</FormLabel>
           <Select value={taskStatus} onChange={(e) => setTaskStatus(e.target.value)}>
@@ -171,7 +180,6 @@ export default function EditTask() {
             ))}
           </Select>
         </FormControl>
-
         <FormControl mb={3} isRequired>
           <FormLabel>Assignee</FormLabel>
           <Select value={assignee} onChange={(e) => setAssignee(e.target.value)}>
@@ -182,7 +190,6 @@ export default function EditTask() {
           </Select>
         </FormControl>
 
-        {/* MEDIA GRID */}
         {displayList.length > 0 && (
           <Box mb={4}>
             <FormLabel>{newPreviews.length > 0 ? "New Media Preview" : "Current Media"}</FormLabel>
@@ -221,7 +228,9 @@ export default function EditTask() {
           </Text>
         </FormControl>
 
-        <Button colorScheme="blue" type="submit" width="100%">Update Task</Button>
+        <Button colorScheme="blue" type="submit" width="100%" isLoading={submitting}>
+          Update Task
+        </Button>
       </form>
     </Box>
   );

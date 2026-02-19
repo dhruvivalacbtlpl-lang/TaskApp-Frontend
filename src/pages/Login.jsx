@@ -1,39 +1,41 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import api from "../api";
 import { useAuth } from "../context/AuthContext";
+import { AiOutlineEye, AiOutlineEyeInvisible } from "react-icons/ai";
 
 function Login() {
-  const { login } = useAuth(); 
+  const { login } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+    setLoading(true);
 
     try {
-      // Admin login
-      const res = await axios.post(
-        "http://localhost:5000/api/auth/login", // Admin login endpoint
+      const res = await api.post(
+        "/auth/login",
         { email, password },
         { withCredentials: true }
       );
-      
-        login(res.data.data)
 
-        navigate("/admin");
+      login(res.data.data);
+      navigate("/admin");
 
     } catch (adminErr) {
-      console.log("Admin login failed:", adminErr.response?.data?.message || adminErr.message);
+      const message = adminErr.response?.data?.message || "Login failed. Please try again.";
+      setError(message); // ✅ shows on form
+    } finally {
+      setLoading(false);
     }
-
-
   };
 
   return (
@@ -41,7 +43,12 @@ function Login() {
       <form onSubmit={handleSubmit} style={styles.card}>
         <h2 style={styles.title}>Login</h2>
 
-        {error && <p style={styles.error}>{error}</p>}
+        {/* ✅ Error shows here on form */}
+        {error && (
+          <div style={styles.errorBox}>
+            ❌ {error}
+          </div>
+        )}
 
         <input
           type="email"
@@ -59,18 +66,26 @@ function Login() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            style={styles.input}
+            style={styles.inputPassword}
           />
           <span
             onClick={() => setShowPassword(!showPassword)}
-            style={styles.eye}
+            style={styles.eyeIcon}
           >
-            {showPassword ? "🙈" : "👁️"}
+            {showPassword ? (
+              <AiOutlineEyeInvisible size={20} color="#888" />
+            ) : (
+              <AiOutlineEye size={20} color="#888" />
+            )}
           </span>
         </div>
 
-        <button type="submit" style={styles.button}>
-          Login
+        <button
+          type="submit"
+          style={{ ...styles.button, opacity: loading ? 0.7 : 1 }}
+          disabled={loading}
+        >
+          {loading ? "Logging in..." : "Login"}
         </button>
       </form>
     </div>
@@ -94,7 +109,23 @@ const styles = {
     borderRadius: "10px",
     boxShadow: "0 10px 25px rgba(0,0,0,0.1)",
   },
-  title: { textAlign: "center", marginBottom: "20px" },
+  title: {
+    textAlign: "center",
+    marginBottom: "20px",
+    fontSize: "22px",
+    fontWeight: "bold",
+    color: "#1e293b",
+  },
+  errorBox: {
+    color: "#b91c1c",
+    fontSize: "13px",
+    marginBottom: "12px",
+    textAlign: "center",
+    background: "#fef2f2",
+    padding: "10px",
+    borderRadius: "6px",
+    border: "1px solid #fca5a5",
+  },
   input: {
     width: "100%",
     padding: "10px",
@@ -102,9 +133,29 @@ const styles = {
     borderRadius: "6px",
     border: "1px solid #ccc",
     fontSize: "14px",
+    boxSizing: "border-box",
   },
-  passwordBox: { position: "relative" },
-  eye: { position: "absolute", right: "10px", top: "35%", cursor: "pointer" },
+  passwordBox: {
+    position: "relative",
+    marginBottom: "15px",
+  },
+  inputPassword: {
+    width: "100%",
+    padding: "10px 40px 10px 10px",
+    borderRadius: "6px",
+    border: "1px solid #ccc",
+    fontSize: "14px",
+    boxSizing: "border-box",
+  },
+  eyeIcon: {
+    position: "absolute",
+    right: "10px",
+    top: "50%",
+    transform: "translateY(-50%)",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+  },
   button: {
     width: "100%",
     padding: "10px",
@@ -114,11 +165,6 @@ const styles = {
     borderRadius: "6px",
     cursor: "pointer",
     fontSize: "15px",
-  },
-  error: {
-    color: "red",
-    fontSize: "13px",
-    marginBottom: "10px",
-    textAlign: "center",
+    fontWeight: "600",
   },
 };

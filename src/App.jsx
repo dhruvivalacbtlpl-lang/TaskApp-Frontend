@@ -18,7 +18,7 @@ import CreateTaskStatus from "./pages/taskstatus/CreateTaskStatus";
 import TaskStatusList from "./pages/taskstatus/TaskStatusList";
 import EditTaskStatus from "./pages/taskstatus/EditTaskStatus";
 import EditStaffPage from "./pages/EditStaffPage";
-
+import Dashboard from "./pages/Dashboard"; // ✅ added
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -34,17 +34,17 @@ function App() {
         <Route path="/" element={<Login />} />
 
         {/* Admin layout */}
-        <Route
-          path="/admin"
-          element={<AdminLayout />}
-        >
-          <Route index element={<div>Dashboard Overview</div>} />
+        <Route path="/admin" element={<AdminLayout />}>
+
+          {/* ✅ Dashboard */}
+          <Route index element={<Dashboard />} />
+
           <Route path="profile" element={<AdminProfile />} />
 
           <Route path="staff">
             <Route index element={<StaffPage />} />
             <Route path="create" element={<CreateStaffPage />} />
-             <Route path="edit/:id" element={<EditStaffPage />} />
+            <Route path="edit/:id" element={<EditStaffPage />} />
           </Route>
 
           <Route path="roles" element={<RolesPage />} />
@@ -59,17 +59,15 @@ function App() {
             <Route index element={<TaskList />} />
             <Route path="create" element={<CreateTask />} />
             <Route path="edit/:id" element={<EditTask />} />
-
           </Route>
+
           <Route path="task-status">
             <Route index element={<TaskStatusList />} />
             <Route path="create" element={<CreateTaskStatus />} />
-            <Route path="edit/:id" element={<EditTaskStatus />}
-/>
+            <Route path="edit/:id" element={<EditTaskStatus />} />
           </Route>
 
         </Route>
-
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

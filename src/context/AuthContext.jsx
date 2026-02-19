@@ -11,7 +11,7 @@ export function AuthProvider({ children }) {
   const refreshProfile = async () => {
     try {
       const res = await axios.get(
-        "http://localhost:5000/api/auth/profile",
+        "/auth/profile",
         { withCredentials: true }
       );
 

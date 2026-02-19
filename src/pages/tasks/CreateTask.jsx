@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
-import { Box, FormControl, FormLabel, Input, Select, Button, useToast, Image, Flex, Text } from "@chakra-ui/react";
+import {
+  Box, FormControl, FormLabel, Input, Select, Button,
+  Image, Flex, Text, Alert, AlertIcon, AlertDescription,
+} from "@chakra-ui/react";
 import { useNavigate, Navigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import api from "../../api";
@@ -12,12 +15,14 @@ export default function CreateTask() {
   const [description, setDescription] = useState("");
   const [taskStatus, setTaskStatus] = useState("");
   const [assignee, setAssignee] = useState("");
-  const [mediaFiles, setMediaFiles] = useState([]);   // ✅ multiple files
-  const [previews, setPreviews] = useState([]);        // ✅ previews
+  const [mediaFiles, setMediaFiles] = useState([]);
+  const [previews, setPreviews] = useState([]);
   const [statuses, setStatuses] = useState([]);
   const [staffList, setStaffList] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [successMsg, setSuccessMsg] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
 
-  const toast = useToast();
   const navigate = useNavigate();
 
   if (!isAdmin && !hasPermission("task_create")) {
@@ -29,15 +34,12 @@ export default function CreateTask() {
     api.get("/staff").then(res => setStaffList(res.data)).catch(console.error);
   }, []);
 
-  /* ================= FILE CHANGE ================= */
   const handleFileChange = (e) => {
     const files = Array.from(e.target.files);
     if (!files.length) return;
     setMediaFiles(files);
-
     const result = [];
     let loaded = 0;
-
     files.forEach((file) => {
       const videoTypes = ["video/mp4", "video/webm", "video/ogg", "video/quicktime"];
       if (videoTypes.includes(file.type)) {
@@ -56,42 +58,52 @@ export default function CreateTask() {
     });
   };
 
-  /* ================= SUBMIT ================= */
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setErrorMsg(""); setSuccessMsg("");
     try {
+      setLoading(true);
       const formData = new FormData();
       formData.append("name", name);
       formData.append("description", description);
       formData.append("assignee", assignee);
       formData.append("taskStatus", taskStatus);
-      mediaFiles.forEach((file) => formData.append("media", file)); // ✅ all files
-
+      mediaFiles.forEach((file) => formData.append("media", file));
       await api.post("/tasks", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-
-      toast({ title: "Task created", status: "success", duration: 2000 });
-      navigate("/admin/tasks");
+      setSuccessMsg("Task created successfully!");
+      setTimeout(() => navigate("/admin/tasks"), 1500);
     } catch (err) {
-      console.error(err);
-      toast({ title: "Error creating task", status: "error", duration: 2000 });
+      setErrorMsg("Error creating task. Please try again.");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <Box maxW="md" bg="white" p={6} borderRadius="md">
+
+      {successMsg && (
+        <Alert status="success" borderRadius="md" mb={4}>
+          <AlertIcon /><AlertDescription>{successMsg}</AlertDescription>
+        </Alert>
+      )}
+      {errorMsg && (
+        <Alert status="error" borderRadius="md" mb={4}>
+          <AlertIcon /><AlertDescription>{errorMsg}</AlertDescription>
+        </Alert>
+      )}
+
       <form onSubmit={handleSubmit}>
         <FormControl mb={3} isRequired>
           <FormLabel>Title</FormLabel>
           <Input value={name} onChange={(e) => setName(e.target.value)} />
         </FormControl>
-
         <FormControl mb={3} isRequired>
           <FormLabel>Description</FormLabel>
           <Input value={description} onChange={(e) => setDescription(e.target.value)} />
         </FormControl>
-
         <FormControl mb={3} isRequired>
           <FormLabel>Status</FormLabel>
           <Select value={taskStatus} onChange={(e) => setTaskStatus(e.target.value)}>
@@ -101,7 +113,6 @@ export default function CreateTask() {
             ))}
           </Select>
         </FormControl>
-
         <FormControl mb={3} isRequired>
           <FormLabel>Assignee</FormLabel>
           <Select value={assignee} onChange={(e) => setAssignee(e.target.value)}>
@@ -111,22 +122,17 @@ export default function CreateTask() {
             ))}
           </Select>
         </FormControl>
-
         <FormControl mb={3}>
           <FormLabel>Upload Media</FormLabel>
-          <Input
-            type="file"
-            accept="image/*,video/*"
-            multiple
-            onChange={handleFileChange}
-          />
+          <Input type="file" accept="image/*,video/*" multiple onChange={handleFileChange} />
           <Text fontSize="xs" color="gray.500" mt={1}>You can select multiple images or videos</Text>
         </FormControl>
 
-        {/* ✅ PREVIEW GRID */}
         {previews.length > 0 && (
           <Box mb={4}>
-            <Text fontSize="sm" mb={2} color="gray.600">Preview ({previews.length} file{previews.length > 1 ? "s" : ""})</Text>
+            <Text fontSize="sm" mb={2} color="gray.600">
+              Preview ({previews.length} file{previews.length > 1 ? "s" : ""})
+            </Text>
             <Flex gap={2} flexWrap="wrap">
               {previews.map((p, i) => (
                 <Box key={i} width="80px" height="80px" borderRadius="md"
@@ -150,7 +156,9 @@ export default function CreateTask() {
           </Box>
         )}
 
-        <Button colorScheme="blue" type="submit" width="100%">Create Task</Button>
+        <Button colorScheme="blue" type="submit" width="100%" isLoading={loading}>
+          Create Task
+        </Button>
       </form>
     </Box>
   );

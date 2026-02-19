@@ -1,19 +1,10 @@
 import { useEffect, useState } from "react";
 import {
-  Box,
-  Flex,
-  Heading,
-  Button,
-  Badge,
-  Spinner,
-  HStack,
-  Text,
-  Input,
-  Select,
-  IconButton,
-  useToast,
+  Box, Flex, Heading, Button, Badge, Spinner,
+  HStack, Text, Input, Select, IconButton, useToast, Alert, AlertIcon, AlertDescription,
 } from "@chakra-ui/react";
-import { EditIcon, DeleteIcon } from "@chakra-ui/icons";
+import { ChevronLeftIcon, ChevronRightIcon } from "@chakra-ui/icons";
+import { MdPersonAdd, MdEdit, MdDelete } from "react-icons/md";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
@@ -24,7 +15,6 @@ export default function StaffPage() {
   const { hasPermission, user } = useAuth();
   const isAdmin = user?.role?.name?.toLowerCase() === "admin";
 
-  // Permissions
   const canRead = isAdmin || hasPermission("Staff_read");
   const canCreate = isAdmin || hasPermission("Staff_create");
   const canUpdate = isAdmin || hasPermission("Staff_update");
@@ -35,41 +25,28 @@ export default function StaffPage() {
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
   const [loading, setLoading] = useState(true);
-
   const [currentPage, setCurrentPage] = useState(1);
   const [staffsPerPage, setStaffsPerPage] = useState(5);
 
-  if (!canRead) {
-    return (
-      <Box p={6}>
-        <Text fontSize="lg" color="red.500">
-          ❌ You don't have permission to view this page
-        </Text>
-      </Box>
-    );
-  }
-
-  // Fetch staff
   const fetchStaff = async () => {
     try {
-      const res = await axios.get("http://localhost:5000/api/staff", {
+      const res = await axios.get("/staff", {
         headers: { "Cache-Control": "no-cache" },
       });
       setStaffs(res.data || []);
     } catch {
-      toast({ title: "Error fetching staff", status: "error" });
+      toast({ title: "Error fetching staff", status: "error", isClosable: true });
     }
   };
 
-  // Fetch roles
   const fetchRoles = async () => {
     try {
-      const res = await axios.get("http://localhost:5000/api/role", {
+      const res = await axios.get("/role", {
         headers: { "Cache-Control": "no-cache" },
       });
       setRoles(res.data || []);
     } catch {
-      toast({ title: "Error fetching roles", status: "error" });
+      toast({ title: "Error fetching roles", status: "error", isClosable: true });
     }
   };
 
@@ -78,7 +55,6 @@ export default function StaffPage() {
     Promise.all([fetchStaff(), fetchRoles()]).finally(() => setLoading(false));
   }, []);
 
-  // Filter staff
   const filteredStaffs = staffs
     .filter((s) =>
       search
@@ -92,63 +68,64 @@ export default function StaffPage() {
   const startIndex = (currentPage - 1) * staffsPerPage;
   const currentStaffs = filteredStaffs.slice(startIndex, startIndex + staffsPerPage);
 
-  // Delete staff
   const handleDelete = async (id) => {
-    if (!window.confirm("Delete this user?")) return;
     try {
-      await axios.delete(`http://localhost:5000/api/staff/${id}`);
+      await axios.delete(`/staff/${id}`);
       setStaffs(staffs.filter((s) => s._id !== id));
-      toast({ title: "User deleted", status: "success" });
+      toast({ title: "User deleted successfully", status: "success", isClosable: true });
     } catch {
-      toast({ title: "Delete failed", status: "error" });
+      toast({ title: "Delete failed. Please try again.", status: "error", isClosable: true });
     }
   };
 
+  // ✅ Early return AFTER all hooks
+  if (!canRead) {
+    return (
+      <Box p={6}>
+        <Alert status="error" borderRadius="md">
+          <AlertIcon />
+          <AlertDescription>You don't have permission to view this page.</AlertDescription>
+        </Alert>
+      </Box>
+    );
+  }
+
   return (
     <Box bg="white" p={6} borderRadius="md" boxShadow="md">
-      {/* Header */}
       <Flex justify="space-between" align="center" mb={5}>
         <Heading size="md">Staff</Heading>
         {canCreate && (
-          <Button colorScheme="blue" onClick={() => navigate("/admin/staff/create")}>
-            + Add User
+          <Button
+            colorScheme="blue"
+            leftIcon={<MdPersonAdd size={18} />}
+            onClick={() => navigate("/admin/staff/create")}
+          >
+            Add User
           </Button>
         )}
       </Flex>
 
-      {/* Search & Filter */}
       <Flex gap={4} mb={4} wrap="wrap">
         <Input
           placeholder="Search users..."
           maxW="300px"
           value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setCurrentPage(1);
-          }}
+          onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }}
         />
         <Select
           placeholder="Filter by Role"
           maxW="200px"
           value={roleFilter}
-          onChange={(e) => {
-            setRoleFilter(e.target.value);
-            setCurrentPage(1);
-          }}
+          onChange={(e) => { setRoleFilter(e.target.value); setCurrentPage(1); }}
         >
           {roles.map((r) => (
-            <option key={r._id} value={r._id}>
-              {r.name}
-            </option>
+            <option key={r._id} value={r._id}>{r.name}</option>
           ))}
         </Select>
       </Flex>
 
-      {/* Table */}
       {loading ? (
-        <Flex justify="center" py={10}>
-          <Spinner size="lg" />
-        </Flex>
+        <Flex justify="center" py={10}><Spinner size="lg" /></Flex>
       ) : (
         <>
           <Box overflowX="auto">
@@ -167,9 +144,7 @@ export default function StaffPage() {
               <tbody>
                 {currentStaffs.length === 0 ? (
                   <tr>
-                    <td colSpan={5} style={styles.empty}>
-                      No users found
-                    </td>
+                    <td colSpan={5} style={styles.empty}>No users found</td>
                   </tr>
                 ) : (
                   currentStaffs.map((staff) => (
@@ -188,19 +163,18 @@ export default function StaffPage() {
                             {canUpdate && (
                               <IconButton
                                 size="sm"
-                                icon={<EditIcon />}
+                                icon={<MdEdit size={16} />}
                                 aria-label="Edit Staff"
-                                onClick={() =>
-                                  navigate(`/admin/staff/edit/${staff._id}`)
-                                }
+                                colorScheme="gray"
+                                onClick={() => navigate(`/admin/staff/edit/${staff._id}`)}
                               />
                             )}
                             {canDelete && (
                               <IconButton
                                 size="sm"
-                                colorScheme="red"
-                                icon={<DeleteIcon />}
+                                icon={<MdDelete size={16} />}
                                 aria-label="Delete Staff"
+                                colorScheme="red"
                                 onClick={() => handleDelete(staff._id)}
                               />
                             )}
@@ -214,38 +188,27 @@ export default function StaffPage() {
             </table>
           </Box>
 
-          {/* Pagination */}
           <Flex mt={4} align="center" justify="space-between" wrap="wrap" gap={4}>
             <Text fontSize="sm" color="gray.600">
               Page {currentPage} of {totalPages} • {filteredStaffs.length} users
             </Text>
-
             <HStack>
               <Text fontSize="sm">Rows:</Text>
-              <Select
-                size="sm"
-                width="80px"
-                value={staffsPerPage}
-                onChange={(e) => {
-                  setStaffsPerPage(Number(e.target.value));
-                  setCurrentPage(1);
-                }}
-              >
+              <Select size="sm" width="80px" value={staffsPerPage}
+                onChange={(e) => { setStaffsPerPage(Number(e.target.value)); setCurrentPage(1); }}>
                 <option value={5}>5</option>
                 <option value={10}>10</option>
                 <option value={15}>15</option>
               </Select>
             </HStack>
-
             <HStack>
-              <Button
+              <IconButton
                 size="sm"
+                icon={<ChevronLeftIcon />}
                 isDisabled={currentPage === 1}
                 onClick={() => setCurrentPage((p) => p - 1)}
-              >
-                ◀
-              </Button>
-
+                aria-label="Previous page"
+              />
               {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
                 <Button
                   key={page}
@@ -257,14 +220,13 @@ export default function StaffPage() {
                   {page}
                 </Button>
               ))}
-
-              <Button
+              <IconButton
                 size="sm"
+                icon={<ChevronRightIcon />}
                 isDisabled={currentPage === totalPages}
                 onClick={() => setCurrentPage((p) => p + 1)}
-              >
-                ▶
-              </Button>
+                aria-label="Next page"
+              />
             </HStack>
           </Flex>
         </>
@@ -276,14 +238,7 @@ export default function StaffPage() {
 const styles = {
   table: { width: "100%", borderCollapse: "collapse", fontSize: 14 },
   thead: { backgroundColor: "#f8fafc" },
-  th: {
-    padding: "12px",
-    textAlign: "left",
-    fontSize: 12,
-    fontWeight: 600,
-    textTransform: "uppercase",
-    color: "#334155",
-  },
+  th: { padding: "12px", textAlign: "left", fontSize: 12, fontWeight: 600, textTransform: "uppercase", color: "#334155" },
   td: { padding: "12px", borderBottom: "1px solid #e5e7eb" },
   empty: { textAlign: "center", padding: 20, color: "#64748b" },
 };

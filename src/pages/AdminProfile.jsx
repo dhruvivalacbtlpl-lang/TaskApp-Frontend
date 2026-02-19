@@ -1,87 +1,117 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import {
-  Box,
-  Heading,
-  Text,
-  Stack,
-  Avatar,
-  Button,
-  Flex,
-  Divider,
+  Box, Heading, Text, Stack, Avatar, Button,
+  Flex, Divider, Badge, Spinner, Alert, AlertIcon, AlertDescription,
 } from "@chakra-ui/react";
 import { useNavigate } from "react-router-dom";
+import { MdArrowBack, MdPerson, MdEmail, MdPhone } from "react-icons/md";
+import { useAuth } from "../context/AuthContext";
 
 function AdminProfile() {
-  const [admin, setAdmin] = useState({});
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState("");
   const navigate = useNavigate();
+  const { user } = useAuth();
+
+  const isAdmin = user?.role?.name?.toLowerCase() === "admin";
 
   useEffect(() => {
-    axios
-      .get("http://localhost:5000/api/auth/profile", {
-        withCredentials: true,
-      })
-      .then((res) => setAdmin(res.data))
-      .catch((err) => console.error(err));
+    axios.get("/auth/profile", { withCredentials: true })
+      .then((res) => setProfile(res.data))
+      .catch((err) => setErrorMsg("Failed to load profile. Please try again."))
+      .finally(() => setLoading(false));
   }, []);
 
+  if (loading) {
+    return (
+      <Flex justify="center" align="center" h="60vh">
+        <Spinner size="xl" color="blue.500" />
+      </Flex>
+    );
+  }
+
   return (
-    <Box bg="gray.100" minH="100vh" p={8}>
-      {/* Back Button */}
+    <Box>
+      {/* ✅ Back Button */}
       <Button
         mb={6}
         colorScheme="blue"
         variant="outline"
         size="sm"
+        leftIcon={<MdArrowBack size={16} />}
         onClick={() => navigate("/admin")}
       >
-        ← Back to Dashboard
+        Back to Dashboard
       </Button>
 
-      {/* Profile Card */}
+      {errorMsg && (
+        <Alert status="error" borderRadius="md" mb={4}>
+          <AlertIcon /><AlertDescription>{errorMsg}</AlertDescription>
+        </Alert>
+      )}
+
+      {/* ✅ Profile Card */}
       <Box
-        bg="white"
-        maxW="620px"
-        mx="auto"
-        p={8}
-        borderRadius="lg"
-        boxShadow="md"
-        border="1px solid"
-        borderColor="gray.200"
+        bg="white" maxW="620px" mx="auto" p={8}
+        borderRadius="lg" boxShadow="md"
+        border="1px solid" borderColor="gray.200"
       >
         <Flex align="center" mb={6}>
           <Avatar
-            size="lg"
-            name={admin.name}
+            size="xl"
+            name={profile?.name}
             mr={4}
             bg="blue.600"
             color="white"
           />
           <Box>
             <Heading size="md" color="gray.800">
-              {admin.name}
+              {profile?.name}
             </Heading>
-            <Text color="blue.600" fontSize="sm" fontWeight="medium">
-              Administrator
-            </Text>
+            {/* ✅ Show role - not hardcoded as Administrator */}
+            <Badge
+              colorScheme={isAdmin ? "blue" : "green"}
+              fontSize="sm"
+              mt={1}
+            >
+              {profile?.role?.name || "Staff"}
+            </Badge>
           </Box>
         </Flex>
 
-        <Divider mb={4} />
+        <Divider mb={6} />
 
-        <Stack spacing={4}>
-          <Flex>
-            <Text w="120px" color="gray.500" fontWeight="semibold">
-              Email
-            </Text>
-            <Text color="gray.800">{admin.email}</Text>
+        <Stack spacing={5}>
+          <Flex align="center" gap={3}>
+            <Box bg="blue.50" p={2} borderRadius="md">
+              <MdPerson size={20} color="#3b82f6" />
+            </Box>
+            <Box>
+              <Text fontSize="xs" color="gray.500" fontWeight="600">Full Name</Text>
+              <Text color="gray.800" fontWeight="500">{profile?.name || "—"}</Text>
+            </Box>
           </Flex>
 
-          <Flex>
-            <Text w="120px" color="gray.500" fontWeight="semibold">
-              Mobile
-            </Text>
-            <Text color="gray.800">{admin.mobile}</Text>
+          <Flex align="center" gap={3}>
+            <Box bg="green.50" p={2} borderRadius="md">
+              <MdEmail size={20} color="#10b981" />
+            </Box>
+            <Box>
+              <Text fontSize="xs" color="gray.500" fontWeight="600">Email</Text>
+              <Text color="gray.800" fontWeight="500">{profile?.email || "—"}</Text>
+            </Box>
+          </Flex>
+
+          <Flex align="center" gap={3}>
+            <Box bg="purple.50" p={2} borderRadius="md">
+              <MdPhone size={20} color="#8b5cf6" />
+            </Box>
+            <Box>
+              <Text fontSize="xs" color="gray.500" fontWeight="600">Mobile</Text>
+              <Text color="gray.800" fontWeight="500">{profile?.mobile || "—"}</Text>
+            </Box>
           </Flex>
         </Stack>
       </Box>

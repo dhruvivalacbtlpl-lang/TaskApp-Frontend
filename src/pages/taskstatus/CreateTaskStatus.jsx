@@ -1,42 +1,59 @@
 import { useState } from "react";
 import {
-  Box,
-  Heading,
-  FormControl,
-  FormLabel,
-  Input,
-  Select,
-  Button,
-  VStack,
+  Box, Heading, FormControl, FormLabel, Input,
+  Select, Button, VStack, Alert, AlertIcon, AlertDescription,
 } from "@chakra-ui/react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 
 function CreateTaskStatus() {
   const [name, setName] = useState("");
-  const [status, setStatus] = useState("ACTIVE"); // ✅ uppercase
+  const [status, setStatus] = useState("ACTIVE");
+  const [loading, setLoading] = useState(false);
+  const [successMsg, setSuccessMsg] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
+
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setErrorMsg(""); setSuccessMsg("");
+
+    if (!name.trim()) {
+      setErrorMsg("Status name is required.");
+      return;
+    }
 
     try {
-      await axios.post("http://localhost:5000/api/task-status", {
-        name: name.toUpperCase(), // optional if you want uppercase names
-        status, // already uppercase
+      setLoading(true);
+      await axios.post("/task-status", {
+        name: name.toUpperCase(),
+        status,
       });
-
-      navigate("/admin/task-status");
+      setSuccessMsg("Task status created successfully!");
+      setTimeout(() => navigate("/admin/task-status"), 1500);
     } catch (err) {
-      console.error("Create failed:", err.response?.data || err.message);
+      setErrorMsg(err.response?.data?.message || "Create failed. Please try again.");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <Box bg="white" p="6" borderRadius="md" boxShadow="sm" maxW="600px">
-      <Heading size="md" mb="5">
-        Create Task Status
-      </Heading>
+      <Heading size="md" mb="5">Create Task Status</Heading>
+
+      {/* ✅ Messages */}
+      {successMsg && (
+        <Alert status="success" borderRadius="md" mb={4}>
+          <AlertIcon /><AlertDescription>{successMsg}</AlertDescription>
+        </Alert>
+      )}
+      {errorMsg && (
+        <Alert status="error" borderRadius="md" mb={4}>
+          <AlertIcon /><AlertDescription>{errorMsg}</AlertDescription>
+        </Alert>
+      )}
 
       <form onSubmit={handleSubmit}>
         <VStack spacing="4" align="stretch">
@@ -48,20 +65,14 @@ function CreateTaskStatus() {
               onChange={(e) => setName(e.target.value)}
             />
           </FormControl>
-
           <FormControl>
             <FormLabel>Status</FormLabel>
-            <Select
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-            >
-              {/* ✅ uppercase values */}
+            <Select value={status} onChange={(e) => setStatus(e.target.value)}>
               <option value="ACTIVE">Active</option>
               <option value="INACTIVE">Inactive</option>
             </Select>
           </FormControl>
-
-          <Button type="submit" colorScheme="blue">
+          <Button type="submit" colorScheme="blue" isLoading={loading}>
             Create Status
           </Button>
         </VStack>

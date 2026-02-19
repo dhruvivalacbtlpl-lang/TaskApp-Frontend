@@ -1,22 +1,10 @@
 import {
-  Box,
-  Flex,
-  Heading,
-  Button,
-  Badge,
-  Spinner,
-  HStack,
-  Text,
-  IconButton,
-  Table,
-  Thead,
-  Tbody,
-  Tr,
-  Th,
-  Td,
-  Select,
+  Box, Flex, Heading, Button, Badge, Spinner, HStack, Text,
+  IconButton, Table, Thead, Tbody, Tr, Th, Td, Select,
+  Alert, AlertIcon, AlertDescription,
 } from "@chakra-ui/react";
-import { EditIcon, DeleteIcon, AddIcon } from "@chakra-ui/icons";
+import { ChevronLeftIcon, ChevronRightIcon } from "@chakra-ui/icons";
+import { MdAdd, MdEdit, MdDelete } from "react-icons/md";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
@@ -25,74 +13,53 @@ import { useAuth } from "../context/AuthContext";
 export default function PermissionsPage() {
   const navigate = useNavigate();
   const { hasPermission, user, loading } = useAuth();
-
   const isAdmin = user?.role?.name?.toLowerCase() === "admin";
 
   const [permissions, setPermissions] = useState([]);
   const [dataLoading, setDataLoading] = useState(true);
-
+  const [successMsg, setSuccessMsg] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(5);
 
-  /* ================= PROTECT PAGE ================= */
-
   useEffect(() => {
     if (loading) return;
-
     if (!isAdmin && !hasPermission("permissions_read")) {
       navigate("/admin");
     }
   }, [loading, user]);
 
-  /* ================= FETCH ================= */
-
   const fetchPermissions = async () => {
     try {
       setDataLoading(true);
-      const res = await axios.get(
-        "http://localhost:5000/api/permissions"
-      );
+      const res = await axios.get("/permissions");
       setPermissions(res.data || []);
     } catch (err) {
-      console.error("Permission fetch error:", err);
+      setErrorMsg("Failed to fetch permissions. Please try again.");
     } finally {
       setDataLoading(false);
     }
   };
 
   useEffect(() => {
-    if (!loading) {
-      fetchPermissions();
-    }
+    if (!loading) fetchPermissions();
   }, [loading]);
 
-  /* ================= DELETE ================= */
-
   const handleDelete = async (id) => {
-    if (!window.confirm("Are you sure?")) return;
-
     try {
-      await axios.delete(
-        `http://localhost:5000/api/permissions/${id}`
-      );
+      await axios.delete(`/permissions/${id}`);
+      setSuccessMsg("Permission deleted successfully.");
+      setErrorMsg("");
       fetchPermissions();
+      setTimeout(() => setSuccessMsg(""), 3000);
     } catch (err) {
-      console.error("Delete error:", err);
+      setErrorMsg("Failed to delete permission. Please try again.");
     }
   };
 
-  /* ================= PAGINATION ================= */
-
   const startIndex = (currentPage - 1) * rowsPerPage;
-  const currentPermissions = permissions.slice(
-    startIndex,
-    startIndex + rowsPerPage
-  );
-
-  const totalPages =
-    Math.ceil(permissions.length / rowsPerPage) || 1;
-
-  /* ================= GLOBAL LOADING ================= */
+  const currentPermissions = permissions.slice(startIndex, startIndex + rowsPerPage);
+  const totalPages = Math.ceil(permissions.length / rowsPerPage) || 1;
 
   if (loading) {
     return (
@@ -106,24 +73,33 @@ export default function PermissionsPage() {
     <Box bg="white" p={6} borderRadius="md" boxShadow="md">
       <Flex justify="space-between" align="center" mb={5}>
         <Heading size="md">Permissions</Heading>
-
         {(isAdmin || hasPermission("permissions_create")) && (
           <Button
-            leftIcon={<AddIcon />}
+            leftIcon={<MdAdd size={18} />}
             colorScheme="blue"
-            onClick={() =>
-              navigate("/admin/permissions/create")
-            }
+            onClick={() => navigate("/admin/permissions/create")}
           >
             Create Permission
           </Button>
         )}
       </Flex>
 
+      {/* ✅ Success Message */}
+      {successMsg && (
+        <Alert status="success" borderRadius="md" mb={4}>
+          <AlertIcon /><AlertDescription>{successMsg}</AlertDescription>
+        </Alert>
+      )}
+
+      {/* ✅ Error Message */}
+      {errorMsg && (
+        <Alert status="error" borderRadius="md" mb={4}>
+          <AlertIcon /><AlertDescription>{errorMsg}</AlertDescription>
+        </Alert>
+      )}
+
       {dataLoading ? (
-        <Flex justify="center" py={10}>
-          <Spinner size="lg" />
-        </Flex>
+        <Flex justify="center" py={10}><Spinner size="lg" /></Flex>
       ) : (
         <>
           <Table size="sm">
@@ -133,124 +109,85 @@ export default function PermissionsPage() {
                 <Th>Name</Th>
                 <Th>Value</Th>
                 <Th>Status</Th>
-
-                {(isAdmin ||
-                  hasPermission("permissions_update") ||
-                  hasPermission("permissions_delete")) && (
+                {(isAdmin || hasPermission("permissions_update") || hasPermission("permissions_delete")) && (
                   <Th textAlign="center">Action</Th>
                 )}
               </Tr>
             </Thead>
-
             <Tbody>
-              {currentPermissions.map((perm, i) => (
-                <Tr key={perm._id}>
-                  <Td>{startIndex + i + 1}</Td>
-                  <Td fontWeight="500">{perm.name}</Td>
-                  <Td>{perm.value}</Td>
-                  <Td>
-                    <Badge
-                      colorScheme={
-                        perm.status === 1 ? "green" : "red"
-                      }
-                    >
-                      {perm.status === 1
-                        ? "Active"
-                        : "Inactive"}
-                    </Badge>
-                  </Td>
-
-                  {(isAdmin ||
-                    hasPermission("permissions_update") ||
-                    hasPermission("permissions_delete")) && (
-                    <Td textAlign="center">
-                      <HStack justify="center">
-                        {(isAdmin ||
-                          hasPermission("permissions_update")) && (
-                          <IconButton
-                            size="sm"
-                            icon={<EditIcon />}
-                            onClick={() =>
-                              navigate(
-                                `/admin/permissions/edit/${perm._id}`
-                              )
-                            }
-                          />
-                        )}
-
-                        {(isAdmin ||
-                          hasPermission("permissions_delete")) && (
-                          <IconButton
-                            size="sm"
-                            colorScheme="red"
-                            icon={<DeleteIcon />}
-                            onClick={() =>
-                              handleDelete(perm._id)
-                            }
-                          />
-                        )}
-                      </HStack>
-                    </Td>
-                  )}
-                </Tr>
-              ))}
-
-              {currentPermissions.length === 0 && (
+              {currentPermissions.length === 0 ? (
                 <Tr>
-                  <Td colSpan="5" textAlign="center">
+                  <Td colSpan="5" textAlign="center" color="gray.500" py={6}>
                     No permissions found
                   </Td>
                 </Tr>
+              ) : (
+                currentPermissions.map((perm, i) => (
+                  <Tr key={perm._id}>
+                    <Td>{startIndex + i + 1}</Td>
+                    <Td fontWeight="500">{perm.name}</Td>
+                    <Td>{perm.value}</Td>
+                    <Td>
+                      <Badge colorScheme={perm.status === 1 ? "green" : "red"}>
+                        {perm.status === 1 ? "Active" : "Inactive"}
+                      </Badge>
+                    </Td>
+                    {(isAdmin || hasPermission("permissions_update") || hasPermission("permissions_delete")) && (
+                      <Td textAlign="center">
+                        <HStack justify="center">
+                          {(isAdmin || hasPermission("permissions_update")) && (
+                            <IconButton
+                              size="sm"
+                              icon={<MdEdit size={16} />}
+                              aria-label="Edit Permission"
+                              colorScheme="gray"
+                              onClick={() => navigate(`/admin/permissions/edit/${perm._id}`)}
+                            />
+                          )}
+                          {(isAdmin || hasPermission("permissions_delete")) && (
+                            <IconButton
+                              size="sm"
+                              colorScheme="red"
+                              icon={<MdDelete size={16} />}
+                              aria-label="Delete Permission"
+                              onClick={() => handleDelete(perm._id)}
+                            />
+                          )}
+                        </HStack>
+                      </Td>
+                    )}
+                  </Tr>
+                ))
               )}
             </Tbody>
           </Table>
 
-          <Flex
-            mt={4}
-            justify="space-between"
-            align="center"
-          >
-            <Text fontSize="sm">
-              Page {currentPage} of {totalPages}
-            </Text>
-
+          <Flex mt={4} justify="space-between" align="center">
+            <Text fontSize="sm">Page {currentPage} of {totalPages}</Text>
             <HStack>
               <Text fontSize="sm">Rows</Text>
-              <Select
-                size="sm"
-                width="80px"
-                value={rowsPerPage}
-                onChange={(e) => {
-                  setRowsPerPage(Number(e.target.value));
-                  setCurrentPage(1);
-                }}
-              >
+              <Select size="sm" width="80px" value={rowsPerPage}
+                onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}>
                 <option value={5}>5</option>
                 <option value={10}>10</option>
                 <option value={15}>15</option>
               </Select>
             </HStack>
-
             <HStack>
-              <Button
+              <IconButton
                 size="sm"
-                onClick={() =>
-                  setCurrentPage((p) => p - 1)
-                }
+                icon={<ChevronLeftIcon />}
                 isDisabled={currentPage === 1}
-              >
-                ◀
-              </Button>
-
-              <Button
+                onClick={() => setCurrentPage((p) => p - 1)}
+                aria-label="Previous page"
+              />
+              <IconButton
                 size="sm"
-                onClick={() =>
-                  setCurrentPage((p) => p + 1)
-                }
+                icon={<ChevronRightIcon />}
                 isDisabled={currentPage === totalPages}
-              >
-                ▶
-              </Button>
+                onClick={() => setCurrentPage((p) => p + 1)}
+                aria-label="Next page"
+              />
             </HStack>
           </Flex>
         </>

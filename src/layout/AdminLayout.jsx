@@ -4,6 +4,17 @@ import {
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import NotificationBell from "../components/NotificationBell";
+import {
+  MdDashboard,
+  MdPeople,
+  MdVpnKey,
+  MdSecurity,
+  MdCheckBox,
+  MdLabel,
+  MdPerson,
+  MdLogout,
+  MdAssignment,
+} from "react-icons/md";
 
 function AdminLayout() {
   const navigate = useNavigate();
@@ -16,12 +27,15 @@ function AdminLayout() {
 
   const linkStyle = ({ isActive }) => ({
     width: "100%",
-    padding: "10px",
+    padding: "10px 12px",
     borderRadius: "6px",
     textDecoration: "none",
     background: isActive ? "#1e40af" : "transparent",
     color: "white",
     fontWeight: "500",
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
   });
 
   const isAdmin = user?.role?.name?.toLowerCase() === "admin";
@@ -30,42 +44,45 @@ function AdminLayout() {
     <Flex minH="100vh">
       {/* SIDEBAR */}
       <Box w="220px" bg="blue.600" color="white" p="5">
-        <Text fontSize="xl" fontWeight="bold" mb="8">
-          📋 Task Manager
-        </Text>
+        <Flex align="center" gap="2" mb="8">
+          <MdAssignment size={24} />
+          <Text fontSize="xl" fontWeight="bold">
+            Task Manager
+          </Text>
+        </Flex>
 
-        <VStack align="stretch" spacing="3">
+        <VStack align="stretch" spacing="2">
           <NavLink to="/admin" end style={linkStyle}>
-            🏠 Dashboard
+            <MdDashboard size={18} /> Dashboard
           </NavLink>
 
           {(isAdmin || hasPermission("Staff_read")) && (
             <NavLink to="/admin/staff" style={linkStyle}>
-              👥 Staff
+              <MdPeople size={18} /> Staff
             </NavLink>
           )}
 
           {(isAdmin || hasPermission("role_read")) && (
             <NavLink to="/admin/roles" style={linkStyle}>
-              🔑 Roles
+              <MdVpnKey size={18} /> Roles
             </NavLink>
           )}
 
           {(isAdmin || hasPermission("permissions_read")) && (
             <NavLink to="/admin/permissions" style={linkStyle}>
-              🛡️ Permissions
+              <MdSecurity size={18} /> Permissions
             </NavLink>
           )}
 
           {(isAdmin || hasPermission("task_read")) && (
             <NavLink to="/admin/tasks" style={linkStyle}>
-              ✅ Tasks
+              <MdCheckBox size={18} /> Tasks
             </NavLink>
           )}
 
           {(isAdmin || hasPermission("taskstatus_read")) && (
             <NavLink to="/admin/task-status" style={linkStyle}>
-              🏷️ Task Status
+              <MdLabel size={18} /> Task Status
             </NavLink>
           )}
         </VStack>
@@ -82,15 +99,30 @@ function AdminLayout() {
           justify="space-between"
           boxShadow="sm"
         >
-          <Text>👤 {user?.name || "Admin User"}</Text>
+          <Flex align="center" gap="2">
+            <MdPerson size={20} color="#4A5568" />
+            <Text fontWeight="500" color="gray.700">
+              {user?.name || "Admin User"}
+            </Text>
+          </Flex>
 
           <HStack spacing="3">
             <NotificationBell />
-            <Button size="sm" colorScheme="blue" onClick={() => navigate("/admin/profile")}>
-              🙍 Profile
+            <Button
+              size="sm"
+              colorScheme="blue"
+              leftIcon={<MdPerson size={16} />}
+              onClick={() => navigate("/admin/profile")}
+            >
+              Profile
             </Button>
-            <Button size="sm" colorScheme="red" onClick={handleLogout}>
-              🚪 Logout
+            <Button
+              size="sm"
+              colorScheme="red"
+              leftIcon={<MdLogout size={16} />}
+              onClick={handleLogout}
+            >
+              Logout
             </Button>
           </HStack>
         </Flex>
