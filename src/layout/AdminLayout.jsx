@@ -1,14 +1,9 @@
 import {
-  Box,
-  Flex,
-  Text,
-  Button,
-  VStack,
-  HStack,
+  Box, Flex, Text, Button, VStack, HStack,
 } from "@chakra-ui/react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import NotificationBell from "../components/NotificationBell"; // ✅ import
+import NotificationBell from "../components/NotificationBell";
 
 function AdminLayout() {
   const navigate = useNavigate();
@@ -36,41 +31,41 @@ function AdminLayout() {
       {/* SIDEBAR */}
       <Box w="220px" bg="blue.600" color="white" p="5">
         <Text fontSize="xl" fontWeight="bold" mb="8">
-          Task Manager
+          📋 Task Manager
         </Text>
 
         <VStack align="stretch" spacing="3">
           <NavLink to="/admin" end style={linkStyle}>
-            Dashboard
+            🏠 Dashboard
           </NavLink>
 
           {(isAdmin || hasPermission("Staff_read")) && (
             <NavLink to="/admin/staff" style={linkStyle}>
-              Staff
+              👥 Staff
             </NavLink>
           )}
 
           {(isAdmin || hasPermission("role_read")) && (
             <NavLink to="/admin/roles" style={linkStyle}>
-              Roles
+              🔑 Roles
             </NavLink>
           )}
 
           {(isAdmin || hasPermission("permissions_read")) && (
             <NavLink to="/admin/permissions" style={linkStyle}>
-              Permissions
+              🛡️ Permissions
             </NavLink>
           )}
 
           {(isAdmin || hasPermission("task_read")) && (
             <NavLink to="/admin/tasks" style={linkStyle}>
-              Tasks
+              ✅ Tasks
             </NavLink>
           )}
 
           {(isAdmin || hasPermission("taskstatus_read")) && (
             <NavLink to="/admin/task-status" style={linkStyle}>
-              Task Status
+              🏷️ Task Status
             </NavLink>
           )}
         </VStack>
@@ -87,22 +82,15 @@ function AdminLayout() {
           justify="space-between"
           boxShadow="sm"
         >
-          <Text>{user?.name || "Admin User"}</Text>
+          <Text>👤 {user?.name || "Admin User"}</Text>
 
           <HStack spacing="3">
-            {/* ✅ Notification bell — sits between name and Profile button */}
             <NotificationBell />
-
-            <Button
-              size="sm"
-              colorScheme="blue"
-              onClick={() => navigate("/admin/profile")}
-            >
-              Profile
+            <Button size="sm" colorScheme="blue" onClick={() => navigate("/admin/profile")}>
+              🙍 Profile
             </Button>
-
             <Button size="sm" colorScheme="red" onClick={handleLogout}>
-              Logout
+              🚪 Logout
             </Button>
           </HStack>
         </Flex>
@@ -116,4 +104,3 @@ function AdminLayout() {
 }
 
 export default AdminLayout;
-  

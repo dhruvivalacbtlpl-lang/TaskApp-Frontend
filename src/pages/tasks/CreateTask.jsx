@@ -1,38 +1,62 @@
 import { useEffect, useState } from "react";
-import { Box, FormControl, FormLabel, Input, Select, Button, useToast } from "@chakra-ui/react";
+import { Box, FormControl, FormLabel, Input, Select, Button, useToast, Image, Flex, Text } from "@chakra-ui/react";
 import { useNavigate, Navigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import api from "../../api"; // ✅ import centralized axios instance
+import api from "../../api";
 
 export default function CreateTask() {
   const { user, hasPermission } = useAuth();
   const isAdmin = user?.role?.name?.toLowerCase() === "admin";
 
-  if (!isAdmin && !hasPermission("task_write")) {
-    return <Navigate to="/admin/tasks" />;
-  }
-
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [taskStatus, setTaskStatus] = useState("");
   const [assignee, setAssignee] = useState("");
-  const [media, setMedia] = useState(null);
+  const [mediaFiles, setMediaFiles] = useState([]);   // ✅ multiple files
+  const [previews, setPreviews] = useState([]);        // ✅ previews
   const [statuses, setStatuses] = useState([]);
   const [staffList, setStaffList] = useState([]);
 
   const toast = useToast();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    api.get("/task-status")
-      .then(res => setStatuses(res.data))
-      .catch(err => console.error(err));
+  if (!isAdmin && !hasPermission("task_create")) {
+    return <Navigate to="/admin/tasks" />;
+  }
 
-    api.get("/staff")
-      .then(res => setStaffList(res.data))
-      .catch(err => console.error(err));
+  useEffect(() => {
+    api.get("/task-status").then(res => setStatuses(res.data)).catch(console.error);
+    api.get("/staff").then(res => setStaffList(res.data)).catch(console.error);
   }, []);
 
+  /* ================= FILE CHANGE ================= */
+  const handleFileChange = (e) => {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+    setMediaFiles(files);
+
+    const result = [];
+    let loaded = 0;
+
+    files.forEach((file) => {
+      const videoTypes = ["video/mp4", "video/webm", "video/ogg", "video/quicktime"];
+      if (videoTypes.includes(file.type)) {
+        result.push({ url: URL.createObjectURL(file), isVideo: true });
+        loaded++;
+        if (loaded === files.length) setPreviews([...result]);
+      } else {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          result.push({ url: ev.target.result, isVideo: false });
+          loaded++;
+          if (loaded === files.length) setPreviews([...result]);
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+  };
+
+  /* ================= SUBMIT ================= */
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -41,7 +65,7 @@ export default function CreateTask() {
       formData.append("description", description);
       formData.append("assignee", assignee);
       formData.append("taskStatus", taskStatus);
-      if (media) formData.append("media", media);
+      mediaFiles.forEach((file) => formData.append("media", file)); // ✅ all files
 
       await api.post("/tasks", formData, {
         headers: { "Content-Type": "multipart/form-data" },
@@ -90,10 +114,43 @@ export default function CreateTask() {
 
         <FormControl mb={3}>
           <FormLabel>Upload Media</FormLabel>
-          <Input type="file" onChange={(e) => setMedia(e.target.files[0])} />
+          <Input
+            type="file"
+            accept="image/*,video/*"
+            multiple
+            onChange={handleFileChange}
+          />
+          <Text fontSize="xs" color="gray.500" mt={1}>You can select multiple images or videos</Text>
         </FormControl>
 
-        <Button colorScheme="blue" type="submit">Create Task</Button>
+        {/* ✅ PREVIEW GRID */}
+        {previews.length > 0 && (
+          <Box mb={4}>
+            <Text fontSize="sm" mb={2} color="gray.600">Preview ({previews.length} file{previews.length > 1 ? "s" : ""})</Text>
+            <Flex gap={2} flexWrap="wrap">
+              {previews.map((p, i) => (
+                <Box key={i} width="80px" height="80px" borderRadius="md"
+                  overflow="hidden" border="1px solid #ccc" position="relative">
+                  {p.isVideo ? (
+                    <>
+                      <Box as="video" src={p.url} width="80px" height="80px"
+                        style={{ objectFit: "cover", pointerEvents: "none" }} />
+                      <Box position="absolute" top="50%" left="50%"
+                        transform="translate(-50%,-50%)" bg="blackAlpha.700"
+                        borderRadius="full" w="28px" h="28px"
+                        display="flex" alignItems="center" justifyContent="center"
+                        color="white" fontSize="12px">▶</Box>
+                    </>
+                  ) : (
+                    <Image src={p.url} width="80px" height="80px" objectFit="cover" />
+                  )}
+                </Box>
+              ))}
+            </Flex>
+          </Box>
+        )}
+
+        <Button colorScheme="blue" type="submit" width="100%">Create Task</Button>
       </form>
     </Box>
   );

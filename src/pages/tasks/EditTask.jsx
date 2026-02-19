@@ -1,23 +1,15 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
-  Box,
-  FormControl,
-  FormLabel,
-  Input,
-  Select,
-  Button,
-  useToast,
-  Spinner,
-  Text,
-  Image,
+  Box, FormControl, FormLabel, Input, Select, Button,
+  useToast, Spinner, Text, Image, Flex,
 } from "@chakra-ui/react";
 import axios from "axios";
 
 const API_BASE = "http://localhost:5000";
 
 function resolveMediaUrl(media) {
-  if (!media) return null;
+  if (!media || typeof media !== "string") return null; // ✅ safe check
   if (media.startsWith("http://") || media.startsWith("https://")) return media;
   return `${API_BASE}${media}`;
 }
@@ -34,18 +26,14 @@ export default function EditTask() {
   const toast = useToast();
 
   const [loading, setLoading] = useState(true);
-  const [lightbox, setLightbox] = useState(false);
-
+  const [lightbox, setLightbox] = useState(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [taskStatus, setTaskStatus] = useState("");
   const [assignee, setAssignee] = useState("");
-
-  const [media, setMedia] = useState(null);
-  const [existingMedia, setExistingMedia] = useState("");
-  const [previewUrl, setPreviewUrl] = useState(null);
-  const [previewIsVideo, setPreviewIsVideo] = useState(false);
-
+  const [newFiles, setNewFiles] = useState([]);
+  const [newPreviews, setNewPreviews] = useState([]);
+  const [existingMedia, setExistingMedia] = useState([]);
   const [statuses, setStatuses] = useState([]);
   const [staffList, setStaffList] = useState([]);
 
@@ -62,35 +50,54 @@ export default function EditTask() {
         setDescription(task.description || "");
         setTaskStatus(task.taskStatus?._id || "");
         setAssignee(task.assignee?._id || "");
-        setExistingMedia(task.media || "");
+
+        // ✅ safely handle string, array, or null
+        let mediaArr = [];
+        if (Array.isArray(task.media)) {
+          mediaArr = task.media.filter(Boolean); // remove nulls
+        } else if (typeof task.media === "string" && task.media) {
+          mediaArr = [task.media];
+        }
+        setExistingMedia(mediaArr);
         setStatuses(statusRes.data || []);
         setStaffList(staffRes.data || []);
-      } catch {
+      } catch (err) {
+        console.error("EditTask fetch error:", err);
         toast({ title: "Failed to load task", status: "error" });
       } finally {
         setLoading(false);
       }
     };
     fetchData();
-  }, [id, toast]);
+  }, [id]);
 
+  /* ================= FILE CHANGE ================= */
   const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setMedia(file);
-    const videoTypes = ["video/mp4", "video/webm", "video/ogg", "video/quicktime"];
-    if (videoTypes.includes(file.type)) {
-      // ✅ For video use object URL (works fine in real browser)
-      setPreviewUrl(URL.createObjectURL(file));
-      setPreviewIsVideo(true);
-    } else {
-      const reader = new FileReader();
-      reader.onload = (ev) => setPreviewUrl(ev.target.result);
-      reader.readAsDataURL(file);
-      setPreviewIsVideo(false);
-    }
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+    setNewFiles(files);
+
+    const previews = [];
+    let loaded = 0;
+    files.forEach((file) => {
+      const videoTypes = ["video/mp4", "video/webm", "video/ogg", "video/quicktime"];
+      if (videoTypes.includes(file.type)) {
+        previews.push({ url: URL.createObjectURL(file), isVideo: true });
+        loaded++;
+        if (loaded === files.length) setNewPreviews([...previews]);
+      } else {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          previews.push({ url: ev.target.result, isVideo: false });
+          loaded++;
+          if (loaded === files.length) setNewPreviews([...previews]);
+        };
+        reader.readAsDataURL(file);
+      }
+    });
   };
 
+  /* ================= SUBMIT ================= */
   const handleSubmit = async (e) => {
     e.preventDefault();
     const formData = new FormData();
@@ -98,7 +105,8 @@ export default function EditTask() {
     formData.append("description", description);
     formData.append("assignee", assignee);
     formData.append("taskStatus", taskStatus);
-    if (media) formData.append("media", media);
+    newFiles.forEach((file) => formData.append("media", file));
+
     try {
       await axios.put(`${API_BASE}/api/tasks/${id}`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
@@ -113,59 +121,33 @@ export default function EditTask() {
 
   if (loading) return <Box p={6}><Spinner /></Box>;
 
-  const displayedMedia = previewUrl || resolveMediaUrl(existingMedia);
-  const mediaIsVideo = previewIsVideo || isVideo(existingMedia);
+  const displayList = newPreviews.length > 0
+    ? newPreviews
+    : existingMedia
+        .map((m) => ({ url: resolveMediaUrl(m), isVideo: isVideo(m) }))
+        .filter((item) => item.url); // ✅ filter out nulls
 
   return (
     <Box maxW="md" bg="white" p={6} borderRadius="md" shadow="sm">
 
-      {/* ================= LIGHTBOX / VIDEO MODAL ================= */}
+      {/* LIGHTBOX */}
       {lightbox && (
-        <Box
-          position="fixed"
-          top={0} left={0} right={0} bottom={0}
-          bg="blackAlpha.900"
-          zIndex={9999}
-          display="flex"
-          alignItems="center"
-          justifyContent="center"
-          onClick={() => setLightbox(false)}
-          cursor="zoom-out"
-        >
-          {mediaIsVideo ? (
-            <Box
-              as="video"
-              src={displayedMedia}
-              controls
-              autoPlay
-              maxH="90vh"
-              maxW="90vw"
-              borderRadius="md"
-              boxShadow="dark-lg"
-              onClick={(e) => e.stopPropagation()}
-            />
+        <Box position="fixed" top={0} left={0} right={0} bottom={0}
+          bg="blackAlpha.900" zIndex={9999}
+          display="flex" alignItems="center" justifyContent="center"
+          onClick={() => setLightbox(null)} cursor="zoom-out">
+          {lightbox.isVideo ? (
+            <Box as="video" src={lightbox.url} controls autoPlay
+              maxH="90vh" maxW="90vw" borderRadius="md" boxShadow="dark-lg"
+              onClick={(e) => e.stopPropagation()} />
           ) : (
-            <Image
-              src={displayedMedia}
-              alt="Task Full View"
-              maxH="90vh"
-              maxW="90vw"
-              borderRadius="md"
-              boxShadow="dark-lg"
-              onClick={(e) => e.stopPropagation()}
-            />
+            <Image src={lightbox.url} alt="Full View"
+              maxH="90vh" maxW="90vw" borderRadius="md" boxShadow="dark-lg"
+              onClick={(e) => e.stopPropagation()} />
           )}
-          <Box
-            position="absolute"
-            top={4} right={6}
-            color="white"
-            fontSize="2xl"
-            fontWeight="bold"
-            cursor="pointer"
-            onClick={() => setLightbox(false)}
-          >
-            ✕
-          </Box>
+          <Box position="absolute" top={4} right={6}
+            color="white" fontSize="2xl" fontWeight="bold"
+            cursor="pointer" onClick={() => setLightbox(null)}>✕</Box>
         </Box>
       )}
 
@@ -200,80 +182,46 @@ export default function EditTask() {
           </Select>
         </FormControl>
 
-        {/* ================= MEDIA PREVIEW ================= */}
-        {displayedMedia && (
+        {/* MEDIA GRID */}
+        {displayList.length > 0 && (
           <Box mb={4}>
-            <FormLabel>{previewUrl ? "New Media Preview" : "Current Media"}</FormLabel>
-
-            {mediaIsVideo ? (
-              // ✅ VIDEO THUMBNAIL — click to open modal
-              <Box
-                position="relative"
-                width="150px"
-                cursor="pointer"
-                onClick={() => setLightbox(true)}
-              >
-                <Box
-                  as="video"
-                  src={displayedMedia}
-                  width="150px"
-                  height="150px"
-                  style={{ objectFit: "cover", borderRadius: "6px", border: "1px solid #ccc", pointerEvents: "none" }}
-                />
-                {/* Play icon overlay */}
-                <Box
-                  position="absolute"
-                  top="50%" left="50%"
-                  transform="translate(-50%, -50%)"
-                  bg="blackAlpha.700"
-                  borderRadius="full"
-                  w="40px" h="40px"
-                  display="flex"
-                  alignItems="center"
-                  justifyContent="center"
-                  color="white"
-                  fontSize="18px"
-                >
-                  ▶
+            <FormLabel>{newPreviews.length > 0 ? "New Media Preview" : "Current Media"}</FormLabel>
+            <Flex gap={2} flexWrap="wrap">
+              {displayList.map((item, i) => (
+                <Box key={i} position="relative" width="80px" height="80px"
+                  cursor="pointer" onClick={() => setLightbox(item)}
+                  borderRadius="md" overflow="hidden" border="1px solid #ccc">
+                  {item.isVideo ? (
+                    <>
+                      <Box as="video" src={item.url} width="80px" height="80px"
+                        style={{ objectFit: "cover", pointerEvents: "none" }} />
+                      <Box position="absolute" top="50%" left="50%"
+                        transform="translate(-50%,-50%)" bg="blackAlpha.700"
+                        borderRadius="full" w="28px" h="28px"
+                        display="flex" alignItems="center" justifyContent="center"
+                        color="white" fontSize="12px">▶</Box>
+                    </>
+                  ) : (
+                    <Image src={item.url} alt={`media-${i}`}
+                      width="80px" height="80px" objectFit="cover"
+                      onError={(e) => { e.target.style.display = "none"; }} />
+                  )}
                 </Box>
-              </Box>
-            ) : (
-              // ✅ IMAGE THUMBNAIL — click to open lightbox
-              <Image
-                src={displayedMedia}
-                alt="Task"
-                boxSize="150px"
-                objectFit="cover"
-                borderRadius="md"
-                border="1px solid #ccc"
-                cursor="zoom-in"
-                title="Click to view full size"
-                onClick={() => setLightbox(true)}
-                onError={(e) => { e.target.style.display = "none"; }}
-              />
-            )}
-
-            <Text fontSize="xs" color="gray.400" mt={1}>
-              Click to view full size
-            </Text>
+              ))}
+            </Flex>
+            <Text fontSize="xs" color="gray.400" mt={1}>Click any to view full size</Text>
           </Box>
         )}
 
         <FormControl mb={4}>
           <FormLabel>Change Media (optional)</FormLabel>
-          <Input
-            type="file"
-            accept="image/*,video/*"
-            onChange={handleFileChange}
-          />
+          <Input type="file" accept="image/*,video/*" multiple onChange={handleFileChange} />
           <Text fontSize="xs" color="gray.500" mt={1}>
-            Leave empty to keep existing media
+            Select multiple files. Leave empty to keep existing media.
           </Text>
         </FormControl>
 
-        <Button colorScheme="blue" type="submit" width="100%">
-          Update Task
-        </Button>
+        <Button colorScheme="blue" type="submit" width="100%">Update Task</Button>
       </form>
     </Box>
   );
