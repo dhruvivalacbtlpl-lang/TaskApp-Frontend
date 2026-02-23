@@ -4,8 +4,7 @@ import {
   Box, Flex, Heading, Button, Table, Thead, Tbody, Tr, Th, Td,
   Badge, HStack, Spinner, Text, IconButton, Alert, AlertIcon, AlertDescription,
 } from "@chakra-ui/react";
-import { ChevronLeftIcon, ChevronRightIcon } from "@chakra-ui/icons";
-import { MdAdd, MdEdit, MdDelete } from "react-icons/md";
+import { MdAdd, MdEdit, MdDelete, MdLabel } from "react-icons/md";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 
@@ -69,21 +68,8 @@ export default function TaskStatusList() {
   }
 
   return (
-    <Box>
-      <Flex justify="space-between" mb={4} align="center">
-        <Heading size="lg" color="blue.700">Task Status</Heading>
-        {canCreate && (
-          <Button
-            leftIcon={<MdAdd size={18} />}
-            colorScheme="blue"
-            onClick={() => navigate("/admin/task-status/create")}
-          >
-            New Status
-          </Button>
-        )}
-      </Flex>
+    <Box bg="white" p={6} borderRadius="md" boxShadow="md">
 
-      {/* ✅ Messages */}
       {successMsg && (
         <Alert status="success" borderRadius="md" mb={4}>
           <AlertIcon /><AlertDescription>{successMsg}</AlertDescription>
@@ -95,63 +81,72 @@ export default function TaskStatusList() {
         </Alert>
       )}
 
-      <Box bg="white" p={4} borderRadius="md">
-        {loading ? (
-          <Flex justify="center" py={10}><Spinner size="lg" /></Flex>
-        ) : statuses.length === 0 ? (
-          <Text textAlign="center" color="gray.500" py={6}>No statuses found</Text>
-        ) : (
-          <Table variant="simple">
-            <Thead bg="gray.100">
-              <Tr>
-                <Th>#</Th>
-                <Th>Status Name</Th>
-                <Th>Status</Th>
+      <Flex justify="space-between" align="center" mb={5}>
+        <Flex align="center" gap={2}>
+          <MdLabel size={22} color="#2b6cb0" />
+          <Heading size="md">Task Status</Heading>
+        </Flex>
+        {canCreate && (
+          <Button leftIcon={<MdAdd size={18} />} colorScheme="blue"
+            onClick={() => navigate("/admin/task-status/create")}>
+            New Status
+          </Button>
+        )}
+      </Flex>
+
+      {loading ? (
+        <Flex justify="center" py={10}>
+          <Spinner size="lg" color="blue.500" />
+        </Flex>
+      ) : statuses.length === 0 ? (
+        <Flex direction="column" align="center" py={12} color="gray.400">
+          <MdLabel size={40} />
+          <Text fontSize="sm" fontWeight="medium" mt={2}>No statuses found</Text>
+          <Text fontSize="xs">Create your first status to get started</Text>
+        </Flex>
+      ) : (
+        <Table size="sm">
+          <Thead bg="#bee3f8">
+            <Tr>
+              <Th>#</Th>
+              <Th>Status Name</Th>
+              <Th>Status</Th>
+              {(canUpdate || canDelete) && <Th textAlign="center">Actions</Th>}
+            </Tr>
+          </Thead>
+          <Tbody>
+            {statuses.map((status, index) => (
+              <Tr key={status._id}
+                _hover={{ bg: "blue.50" }}
+                transition="background 0.15s">
+                <Td>{index + 1}</Td>
+                <Td fontWeight="600">{status.name}</Td>
+                <Td>
+                  <Badge colorScheme={getColor(status.status)}>
+                    {status.status}
+                  </Badge>
+                </Td>
                 {(canUpdate || canDelete) && (
-                  <Th textAlign="center">Actions</Th>
+                  <Td textAlign="center">
+                    <HStack justify="center">
+                      {canUpdate && (
+                        <IconButton size="sm" icon={<MdEdit size={16} />}
+                          aria-label="Edit Status" colorScheme="gray"
+                          onClick={() => navigate(`/admin/task-status/edit/${status._id}`)} />
+                      )}
+                      {canDelete && (
+                        <IconButton size="sm" colorScheme="red"
+                          icon={<MdDelete size={16} />} aria-label="Delete Status"
+                          onClick={() => handleDelete(status._id)} />
+                      )}
+                    </HStack>
+                  </Td>
                 )}
               </Tr>
-            </Thead>
-            <Tbody>
-              {statuses.map((status, index) => (
-                <Tr key={status._id}>
-                  <Td>{index + 1}</Td>
-                  <Td>{status.name}</Td>
-                  <Td>
-                    <Badge colorScheme={getColor(status.status)}>
-                      {status.status}
-                    </Badge>
-                  </Td>
-                  {(canUpdate || canDelete) && (
-                    <Td textAlign="center">
-                      <HStack justify="center">
-                        {canUpdate && (
-                          <IconButton
-                            size="sm"
-                            icon={<MdEdit size={16} />}
-                            aria-label="Edit Status"
-                            colorScheme="gray"
-                            onClick={() => navigate(`/admin/task-status/edit/${status._id}`)}
-                          />
-                        )}
-                        {canDelete && (
-                          <IconButton
-                            size="sm"
-                            colorScheme="red"
-                            icon={<MdDelete size={16} />}
-                            aria-label="Delete Status"
-                            onClick={() => handleDelete(status._id)}
-                          />
-                        )}
-                      </HStack>
-                    </Td>
-                  )}
-                </Tr>
-              ))}
-            </Tbody>
-          </Table>
-        )}
-      </Box>
+            ))}
+          </Tbody>
+        </Table>
+      )}
     </Box>
   );
 }

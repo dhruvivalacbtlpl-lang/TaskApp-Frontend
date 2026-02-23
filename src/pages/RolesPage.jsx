@@ -3,7 +3,7 @@ import {
   IconButton, Badge, Spinner, HStack, Text, Select, Alert, AlertIcon, AlertDescription,
 } from "@chakra-ui/react";
 import { ChevronLeftIcon, ChevronRightIcon } from "@chakra-ui/icons";
-import { MdAdd, MdEdit, MdDelete } from "react-icons/md";
+import { MdAdd, MdEdit, MdDelete, MdVpnKey } from "react-icons/md";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
@@ -65,35 +65,39 @@ export default function RolesPage() {
 
   return (
     <Box bg="white" p={6} borderRadius="md" boxShadow="md">
-      <Flex justify="space-between" align="center" mb={5}>
-        <Heading size="md">Roles</Heading>
-        {canCreate && (
-          <Button
-            leftIcon={<MdAdd size={18} />}
-            colorScheme="blue"
-            onClick={() => navigate("/admin/roles/create")}
-          >
-            Create Role
-          </Button>
-        )}
-      </Flex>
 
-      {/* ✅ Success Message */}
       {successMsg && (
         <Alert status="success" borderRadius="md" mb={4}>
           <AlertIcon /><AlertDescription>{successMsg}</AlertDescription>
         </Alert>
       )}
-
-      {/* ✅ Error Message */}
       {errorMsg && (
         <Alert status="error" borderRadius="md" mb={4}>
           <AlertIcon /><AlertDescription>{errorMsg}</AlertDescription>
         </Alert>
       )}
 
+      <Flex justify="space-between" align="center" mb={5}>
+        <Flex align="center" gap={2}>
+          <MdVpnKey size={22} color="#2b6cb0" />
+          <Heading size="md">Roles</Heading>
+        </Flex>
+        {canCreate && (
+          <Button leftIcon={<MdAdd size={18} />} colorScheme="blue"
+            onClick={() => navigate("/admin/roles/create")}>
+            Create Role
+          </Button>
+        )}
+      </Flex>
+
       {loading ? (
-        <Flex justify="center" py={10}><Spinner size="lg" /></Flex>
+        <Flex justify="center" py={10}><Spinner size="lg" color="blue.500" /></Flex>
+      ) : roles.length === 0 ? (
+        <Flex direction="column" align="center" py={12} color="gray.400">
+          <MdVpnKey size={40} />
+          <Text fontSize="sm" fontWeight="medium" mt={2}>No roles found</Text>
+          <Text fontSize="xs">Create your first role to get started</Text>
+        </Flex>
       ) : (
         <>
           <Table size="sm">
@@ -107,50 +111,36 @@ export default function RolesPage() {
               </Tr>
             </Thead>
             <Tbody>
-              {currentRoles.length === 0 ? (
-                <Tr>
-                  <Td colSpan={5} textAlign="center" color="gray.500" py={6}>
-                    No roles found
+              {currentRoles.map((role, i) => (
+                <Tr key={role._id}
+                  _hover={{ bg: "blue.50" }}
+                  transition="background 0.15s">
+                  <Td>{startIndex + i + 1}</Td>
+                  <Td fontWeight="600">{role.name}</Td>
+                  <Td>
+                    <Badge colorScheme={role.status === 1 ? "green" : "red"}>
+                      {role.status === 1 ? "Active" : "Inactive"}
+                    </Badge>
                   </Td>
-                </Tr>
-              ) : (
-                currentRoles.map((role, i) => (
-                  <Tr key={role._id}>
-                    <Td>{startIndex + i + 1}</Td>
-                    <Td fontWeight="500">{role.name}</Td>
-                    <Td>
-                      <Badge colorScheme={role.status === 1 ? "green" : "red"}>
-                        {role.status === 1 ? "Active" : "Inactive"}
-                      </Badge>
+                  <Td>{role.permissions?.length || 0}</Td>
+                  {showActionColumn && (
+                    <Td textAlign="center">
+                      <HStack justify="center">
+                        {canUpdate && (
+                          <IconButton size="sm" icon={<MdEdit size={16} />}
+                            aria-label="Edit Role" colorScheme="gray"
+                            onClick={() => navigate(`/admin/roles/edit/${role._id}`)} />
+                        )}
+                        {canDelete && (
+                          <IconButton size="sm" icon={<MdDelete size={16} />}
+                            aria-label="Delete Role" colorScheme="red"
+                            onClick={() => deleteRole(role._id)} />
+                        )}
+                      </HStack>
                     </Td>
-                    <Td>{role.permissions?.length || 0}</Td>
-                    {showActionColumn && (
-                      <Td textAlign="center">
-                        <HStack justify="center">
-                          {canUpdate && (
-                            <IconButton
-                              size="sm"
-                              icon={<MdEdit size={16} />}
-                              aria-label="Edit Role"
-                              colorScheme="gray"
-                              onClick={() => navigate(`/admin/roles/edit/${role._id}`)}
-                            />
-                          )}
-                          {canDelete && (
-                            <IconButton
-                              size="sm"
-                              icon={<MdDelete size={16} />}
-                              aria-label="Delete Role"
-                              colorScheme="red"
-                              onClick={() => deleteRole(role._id)}
-                            />
-                          )}
-                        </HStack>
-                      </Td>
-                    )}
-                  </Tr>
-                ))
-              )}
+                  )}
+                </Tr>
+              ))}
             </Tbody>
           </Table>
 
@@ -166,20 +156,12 @@ export default function RolesPage() {
               </Select>
             </HStack>
             <HStack>
-              <IconButton
-                size="sm"
-                icon={<ChevronLeftIcon />}
+              <IconButton size="sm" icon={<ChevronLeftIcon />}
                 isDisabled={currentPage === 1}
-                onClick={() => setCurrentPage((p) => p - 1)}
-                aria-label="Previous page"
-              />
-              <IconButton
-                size="sm"
-                icon={<ChevronRightIcon />}
+                onClick={() => setCurrentPage((p) => p - 1)} aria-label="Previous page" />
+              <IconButton size="sm" icon={<ChevronRightIcon />}
                 isDisabled={currentPage === totalPages}
-                onClick={() => setCurrentPage((p) => p + 1)}
-                aria-label="Next page"
-              />
+                onClick={() => setCurrentPage((p) => p + 1)} aria-label="Next page" />
             </HStack>
           </Flex>
         </>

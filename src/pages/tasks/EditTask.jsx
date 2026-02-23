@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   Box, FormControl, FormLabel, Input, Select, Button,
-  Spinner, Text, Image, Flex, Alert, AlertIcon, AlertDescription,
+  Spinner, Text, Image, Flex, Alert, AlertIcon, AlertDescription, Heading,
 } from "@chakra-ui/react";
 import axios from "axios";
+import api from "../../api";
 
 const API_BASE = "https://w2ml73xv-5000.inc1.devtunnels.ms";
 
@@ -30,11 +31,13 @@ export default function EditTask() {
   const [description, setDescription] = useState("");
   const [taskStatus, setTaskStatus] = useState("");
   const [assignee, setAssignee] = useState("");
+  const [project, setProject] = useState("");
   const [newFiles, setNewFiles] = useState([]);
   const [newPreviews, setNewPreviews] = useState([]);
   const [existingMedia, setExistingMedia] = useState([]);
   const [statuses, setStatuses] = useState([]);
   const [staffList, setStaffList] = useState([]);
+  const [projects, setProjects] = useState([]);
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -42,16 +45,18 @@ export default function EditTask() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [taskRes, statusRes, staffRes] = await Promise.all([
+        const [taskRes, statusRes, staffRes, projectRes] = await Promise.all([
           axios.get(`/tasks/${id}`, { withCredentials: true }),
           axios.get(`/task-status`, { withCredentials: true }),
           axios.get(`/staff`, { withCredentials: true }),
+          api.get("/projects"),
         ]);
         const task = taskRes.data;
         setName(task.name || "");
         setDescription(task.description || "");
         setTaskStatus(task.taskStatus?._id || "");
         setAssignee(task.assignee?._id || "");
+        setProject(task.project?._id || "");
         let mediaArr = [];
         if (Array.isArray(task.media)) {
           mediaArr = task.media.filter(Boolean);
@@ -61,6 +66,7 @@ export default function EditTask() {
         setExistingMedia(mediaArr);
         setStatuses(statusRes.data || []);
         setStaffList(staffRes.data || []);
+        setProjects(projectRes.data || []);
       } catch (err) {
         setErrorMsg("Failed to load task. Please try again.");
       } finally {
@@ -102,6 +108,7 @@ export default function EditTask() {
     formData.append("description", description);
     formData.append("assignee", assignee);
     formData.append("taskStatus", taskStatus);
+    formData.append("project", project);
     newFiles.forEach((file) => formData.append("media", file));
     try {
       setSubmitting(true);
@@ -118,7 +125,7 @@ export default function EditTask() {
     }
   };
 
-  if (loading) return <Box p={6}><Spinner /></Box>;
+  if (loading) return <Flex justify="center" py={10}><Spinner size="lg" color="blue.500" /></Flex>;
 
   const displayList = newPreviews.length > 0
     ? newPreviews
@@ -128,8 +135,8 @@ export default function EditTask() {
 
   return (
     <Box maxW="md" bg="white" p={6} borderRadius="md" shadow="sm">
+      <Heading size="md" mb={5}>✏️ Edit Task</Heading>
 
-      {/* ✅ Messages */}
       {successMsg && (
         <Alert status="success" borderRadius="md" mb={4}>
           <AlertIcon /><AlertDescription>{successMsg}</AlertDescription>
@@ -141,7 +148,6 @@ export default function EditTask() {
         </Alert>
       )}
 
-      {/* LIGHTBOX */}
       {lightbox && (
         <Box position="fixed" top={0} left={0} right={0} bottom={0}
           bg="blackAlpha.900" zIndex={9999}
@@ -186,6 +192,16 @@ export default function EditTask() {
             <option value="">Select Staff</option>
             {staffList.map((s) => (
               <option key={s._id} value={s._id}>{s.name}</option>
+            ))}
+          </Select>
+        </FormControl>
+
+        <FormControl mb={3}>
+          <FormLabel>Project</FormLabel>
+          <Select value={project} onChange={(e) => setProject(e.target.value)}>
+            <option value="">No Project</option>
+            {projects.filter(p => p.status === 1).map(p => (
+              <option key={p._id} value={p._id}>{p.name}</option>
             ))}
           </Select>
         </FormControl>

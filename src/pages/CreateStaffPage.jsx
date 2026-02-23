@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from "react";
-import axios from "axios";
+import { useEffect, useState } from "react";
+import api from "../api"; // ✅ Bug 1 & 2 fixed
 import {
-  Box, Heading, Input, Select, Button,
-  VStack, Spinner, Flex, Text, Alert, AlertIcon, AlertDescription,
+  Box, Heading, Input, Select, Button, FormControl, FormLabel,
+  VStack, Spinner, Flex, Alert, AlertIcon, AlertDescription, Text,
 } from "@chakra-ui/react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -32,9 +32,13 @@ const CreateStaffPage = () => {
   const fetchRoles = async () => {
     try {
       setRolesLoading(true);
-      const res = await axios.get("/role");
+      const res = await api.get("/role"); // ✅ fixed
       if (res.data && Array.isArray(res.data)) {
-        setRoles(res.data.filter((r) => r.status === 1));
+        let filtered = res.data.filter((r) => r.status === 1);
+        if (!isAdmin) {
+          filtered = filtered.filter((r) => r.name.toLowerCase() !== "admin");
+        }
+        setRoles(filtered);
       } else {
         setRoles([]);
       }
@@ -48,20 +52,38 @@ const CreateStaffPage = () => {
 
   useEffect(() => { fetchRoles(); }, []);
 
+  // ✅ Bug 3 fixed — validation
+  const validate = () => {
+    if (!name.trim()) return "Name is required";
+    if (name.trim().length < 2) return "Name must be at least 2 characters";
+    if (name.trim().length > 50) return "Name must be under 50 characters";
+    if (!/^[a-zA-Z\s]+$/.test(name)) return "Name can only contain letters";
+
+    if (!email.trim()) return "Email is required";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "Enter a valid email";
+
+    if (!mobile.trim()) return "Mobile is required";
+    if (!/^[0-9]{10}$/.test(mobile)) return "Mobile must be exactly 10 digits";
+
+    if (!role) return "Please select a role";
+    return null;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg("");
     setSuccessMsg("");
 
-    if (!name || !email || !mobile || !role) {
-      setErrorMsg("All fields are required.");
+    const validationError = validate();
+    if (validationError) {
+      setErrorMsg(validationError);
       return;
     }
 
     try {
       setLoading(true);
-      await axios.post("/staff/create", { name, email, mobile, role });
-      setSuccessMsg(`Staff created successfully! Login credentials sent to ${email}`);
+      await api.post("/staff/create", { name, email, mobile, role }); // ✅ fixed
+      setSuccessMsg(`Staff created! Login credentials sent to ${email}`);
       setName(""); setEmail(""); setMobile(""); setRole("");
     } catch (err) {
       setErrorMsg(err.response?.data?.error || "Failed to create staff. Please try again.");
@@ -70,23 +92,24 @@ const CreateStaffPage = () => {
     }
   };
 
-  return (
-    <Box maxW="500px" mx="auto" mt="10" p="6" bg="white" borderRadius="md" boxShadow="md">
-      <Heading size="lg" mb="6">Create Staff</Heading>
+  // ✅ mobile only numbers
+  const handleMobileChange = (e) => {
+    const val = e.target.value.replace(/\D/g, ""); // strip non-digits
+    if (val.length <= 10) setMobile(val);
+  };
 
-      {/* ✅ Success Message */}
+  return (
+    <Box maxW="500px" mx="auto" p="6" bg="white" borderRadius="md" boxShadow="md">
+      <Heading size="lg" mb="6">👤 Create Staff</Heading>
+
       {successMsg && (
         <Alert status="success" borderRadius="md" mb={4}>
-          <AlertIcon />
-          <AlertDescription>{successMsg}</AlertDescription>
+          <AlertIcon /><AlertDescription>{successMsg}</AlertDescription>
         </Alert>
       )}
-
-      {/* ✅ Error Message */}
       {errorMsg && (
         <Alert status="error" borderRadius="md" mb={4}>
-          <AlertIcon />
-          <AlertDescription>{errorMsg}</AlertDescription>
+          <AlertIcon /><AlertDescription>{errorMsg}</AlertDescription>
         </Alert>
       )}
 
@@ -103,14 +126,36 @@ const CreateStaffPage = () => {
       ) : (
         <form onSubmit={handleSubmit}>
           <VStack spacing={4}>
-            <Input placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
-            <Input placeholder="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-            <Input placeholder="Mobile" value={mobile} onChange={(e) => setMobile(e.target.value)} />
-            <Select placeholder="Select Role" value={role} onChange={(e) => setRole(e.target.value)}>
-              {roles.map((r) => (
-                <option key={r._id} value={r._id}>{r.name}</option>
-              ))}
-            </Select>
+            <FormControl>
+              <FormLabel fontSize="sm">Name</FormLabel>
+              <Input placeholder="Enter full name" value={name}
+                onChange={(e) => setName(e.target.value)} maxLength={50} />
+              <Text fontSize="xs" color="gray.400" textAlign="right">{name.length}/50</Text>
+            </FormControl>
+
+            <FormControl>
+              <FormLabel fontSize="sm">Email</FormLabel>
+              <Input placeholder="Enter email" type="email" value={email}
+                onChange={(e) => setEmail(e.target.value)} maxLength={100} />
+            </FormControl>
+
+            <FormControl>
+              <FormLabel fontSize="sm">Mobile</FormLabel>
+              <Input placeholder="10 digit mobile number" value={mobile}
+                onChange={handleMobileChange} maxLength={10} />
+              <Text fontSize="xs" color="gray.400" textAlign="right">{mobile.length}/10</Text>
+            </FormControl>
+
+            <FormControl>
+              <FormLabel fontSize="sm">Role</FormLabel>
+              <Select placeholder="Select Role" value={role}
+                onChange={(e) => setRole(e.target.value)}>
+                {roles.map((r) => (
+                  <option key={r._id} value={r._id}>{r.name}</option>
+                ))}
+              </Select>
+            </FormControl>
+
             <Button type="submit" colorScheme="blue" width="100%" isLoading={loading}>
               Create Staff
             </Button>

@@ -18,7 +18,10 @@ import CreateTaskStatus from "./pages/taskstatus/CreateTaskStatus";
 import TaskStatusList from "./pages/taskstatus/TaskStatusList";
 import EditTaskStatus from "./pages/taskstatus/EditTaskStatus";
 import EditStaffPage from "./pages/EditStaffPage";
-import Dashboard from "./pages/Dashboard"; // ✅ added
+import Dashboard from "./pages/Dashboard";
+import ProjectsPage from "./pages/project/ProjectsPage";       // ✅ NEW
+import CreateProject from "./pages/project/CreateProject";     // ✅ NEW
+import EditProject from "./pages/project/EditProject";       // ✅ NEW
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -36,7 +39,7 @@ function App() {
         {/* Admin layout */}
         <Route path="/admin" element={<AdminLayout />}>
 
-          {/* ✅ Dashboard */}
+          {/* Dashboard */}
           <Route index element={<Dashboard />} />
 
           <Route path="profile" element={<AdminProfile />} />
@@ -65,6 +68,13 @@ function App() {
             <Route index element={<TaskStatusList />} />
             <Route path="create" element={<CreateTaskStatus />} />
             <Route path="edit/:id" element={<EditTaskStatus />} />
+          </Route>
+
+          {/* ✅ NEW: Projects routes */}
+          <Route path="projects">
+            <Route index element={<ProjectsPage />} />
+            <Route path="create" element={<CreateProject />} />
+            <Route path="edit/:id" element={<EditProject />} />
           </Route>
 
         </Route>

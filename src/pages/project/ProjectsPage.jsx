@@ -1,0 +1,180 @@
+import {
+  Box, Flex, Heading, Button, Table, Thead, Tbody, Tr, Th, Td,
+  IconButton, Badge, Spinner, HStack, Text, Select, Avatar, AvatarGroup,
+  Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter,
+} from "@chakra-ui/react";
+import { EditIcon, DeleteIcon, AddIcon } from "@chakra-ui/icons";
+import { MdFolder } from "react-icons/md";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import api from "../../api";
+import { useSocket } from "../../hooks/useSocket";
+import { useAuth } from "../../context/AuthContext";
+
+export default function ProjectsPage() {
+  const navigate = useNavigate();
+  const { user, hasPermission } = useAuth();
+  const isAdmin = user?.role?.name?.toLowerCase() === "admin";
+
+  const canCreate = isAdmin || hasPermission("project_create");
+  const canUpdate = isAdmin || hasPermission("project_update");
+  const canDelete = isAdmin || hasPermission("project_delete");
+
+  const [projects, setProjects] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [deleteId, setDeleteId] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(5);
+
+  const fetchProjects = async () => {
+    try {
+      setLoading(true);
+      const res = await api.get("/projects");
+      setProjects(res.data || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchProjects(); }, []);
+
+  useSocket("project:created", (p) => setProjects((prev) => [p, ...prev]));
+  useSocket("project:updated", (p) => setProjects((prev) => prev.map((x) => x._id === p._id ? p : x)));
+  useSocket("project:deleted", ({ _id }) => setProjects((prev) => prev.filter((x) => x._id !== _id)));
+
+  const handleDeleteConfirm = async () => {
+    setDeleting(true);
+    try {
+      await api.delete(`/projects/${deleteId}`);
+      setDeleteId(null);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const startIndex = (currentPage - 1) * rowsPerPage;
+  const currentProjects = projects.slice(startIndex, startIndex + rowsPerPage);
+  const totalPages = Math.max(1, Math.ceil(projects.length / rowsPerPage));
+
+  return (
+    <Box bg="white" p={6} borderRadius="md" boxShadow="md">
+
+      <Modal isOpen={!!deleteId} onClose={() => setDeleteId(null)} isCentered size="sm">
+        <ModalOverlay />
+        <ModalContent borderRadius="xl">
+          <ModalHeader fontSize="md">Delete Project</ModalHeader>
+          <ModalBody fontSize="sm" color="gray.500">
+            Are you sure? This will delete the project but not its tasks.
+          </ModalBody>
+          <ModalFooter gap={2}>
+            <Button size="sm" variant="ghost" onClick={() => setDeleteId(null)}>Cancel</Button>
+            <Button size="sm" colorScheme="red" isLoading={deleting}
+              loadingText="Deleting..." onClick={handleDeleteConfirm}>Delete</Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Flex justify="space-between" align="center" mb={5}>
+        <Flex align="center" gap={2}>
+          <MdFolder size={22} color="#2b6cb0" />
+          <Heading size="md">Projects</Heading>
+        </Flex>
+        {canCreate && (
+          <Button leftIcon={<AddIcon />} colorScheme="blue"
+            onClick={() => navigate("/admin/projects/create")}>
+            Create Project
+          </Button>
+        )}
+      </Flex>
+
+      {loading ? (
+        <Flex justify="center" py={10}><Spinner size="lg" color="blue.500" /></Flex>
+      ) : projects.length === 0 ? (
+        <Flex direction="column" align="center" py={12} color="gray.400">
+          <MdFolder size={40} />
+          <Text fontSize="sm" fontWeight="medium" mt={2}>No projects found</Text>
+          <Text fontSize="xs">Create your first project to get started</Text>
+        </Flex>
+      ) : (
+        <>
+          <Table size="sm">
+            <Thead bg="#bee3f8">
+              <Tr>
+                <Th>#</Th>
+                <Th>Name</Th>
+                <Th>Description</Th>
+                <Th>Members</Th>
+                <Th>Status</Th>
+                {(canUpdate || canDelete) && <Th textAlign="center">Actions</Th>}
+              </Tr>
+            </Thead>
+            <Tbody>
+              {currentProjects.map((project, i) => (
+                <Tr key={project._id}
+                  _hover={{ bg: "blue.50" }}
+                  transition="background 0.15s">
+                  <Td>{startIndex + i + 1}</Td>
+                  <Td fontWeight="600">{project.name}</Td>
+                  <Td color="gray.500" fontSize="sm" maxW="200px">
+                    <Text noOfLines={1}>{project.description || "—"}</Text>
+                  </Td>
+                  <Td>
+                    {project.members?.length > 0 ? (
+                      <AvatarGroup size="xs" max={3}>
+                        {project.members.map((m) => (
+                          <Avatar key={m._id} name={m.name} title={m.name} />
+                        ))}
+                      </AvatarGroup>
+                    ) : (
+                      <Text fontSize="xs" color="gray.400">No members</Text>
+                    )}
+                  </Td>
+                  <Td>
+                    <Badge colorScheme={project.status === 1 ? "green" : "red"}>
+                      {project.status === 1 ? "Active" : "Inactive"}
+                    </Badge>
+                  </Td>
+                  {(canUpdate || canDelete) && (
+                    <Td textAlign="center">
+                      <HStack justify="center">
+                        {canUpdate && (
+                          <IconButton size="sm" icon={<EditIcon />}
+                            onClick={() => navigate(`/admin/projects/edit/${project._id}`)} />
+                        )}
+                        {canDelete && (
+                          <IconButton size="sm" colorScheme="red" icon={<DeleteIcon />}
+                            onClick={() => setDeleteId(project._id)} />
+                        )}
+                      </HStack>
+                    </Td>
+                  )}
+                </Tr>
+              ))}
+            </Tbody>
+          </Table>
+
+          <Flex mt={4} justify="space-between" align="center">
+            <Text fontSize="sm">Page {currentPage} of {totalPages}</Text>
+            <HStack>
+              <Text fontSize="sm">Rows</Text>
+              <Select size="sm" width="80px" value={rowsPerPage}
+                onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}>
+                <option value={5}>5</option>
+                <option value={10}>10</option>
+              </Select>
+            </HStack>
+            <HStack>
+              <Button size="sm" onClick={() => setCurrentPage(p => p - 1)} isDisabled={currentPage === 1}>◀</Button>
+              <Button size="sm" onClick={() => setCurrentPage(p => p + 1)} isDisabled={currentPage === totalPages}>▶</Button>
+            </HStack>
+          </Flex>
+        </>
+      )}
+    </Box>
+  );
+}

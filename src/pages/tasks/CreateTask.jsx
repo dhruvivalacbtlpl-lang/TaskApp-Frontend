@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import {
   Box, FormControl, FormLabel, Input, Select, Button,
-  Image, Flex, Text, Alert, AlertIcon, AlertDescription,
+  Image, Flex, Text, Alert, AlertIcon, AlertDescription, Heading,
 } from "@chakra-ui/react";
 import { useNavigate, Navigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import axios from "axios";
 import api from "../../api";
 
 export default function CreateTask() {
@@ -15,10 +16,12 @@ export default function CreateTask() {
   const [description, setDescription] = useState("");
   const [taskStatus, setTaskStatus] = useState("");
   const [assignee, setAssignee] = useState("");
+  const [project, setProject] = useState("");
   const [mediaFiles, setMediaFiles] = useState([]);
   const [previews, setPreviews] = useState([]);
   const [statuses, setStatuses] = useState([]);
   const [staffList, setStaffList] = useState([]);
+  const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
@@ -30,8 +33,9 @@ export default function CreateTask() {
   }
 
   useEffect(() => {
-    api.get("/task-status").then(res => setStatuses(res.data)).catch(console.error);
-    api.get("/staff").then(res => setStaffList(res.data)).catch(console.error);
+    axios.get("/task-status").then(res => setStatuses(res.data)).catch(console.error);
+    axios.get("/staff").then(res => setStaffList(res.data)).catch(console.error);
+    api.get("/projects").then(res => setProjects(res.data || [])).catch(console.error);
   }, []);
 
   const handleFileChange = (e) => {
@@ -68,9 +72,11 @@ export default function CreateTask() {
       formData.append("description", description);
       formData.append("assignee", assignee);
       formData.append("taskStatus", taskStatus);
+      formData.append("project", project);
       mediaFiles.forEach((file) => formData.append("media", file));
-      await api.post("/tasks", formData, {
+      await axios.post("/tasks", formData, {
         headers: { "Content-Type": "multipart/form-data" },
+        withCredentials: true,
       });
       setSuccessMsg("Task created successfully!");
       setTimeout(() => navigate("/admin/tasks"), 1500);
@@ -82,7 +88,8 @@ export default function CreateTask() {
   };
 
   return (
-    <Box maxW="md" bg="white" p={6} borderRadius="md">
+    <Box maxW="md" bg="white" p={6} borderRadius="md" boxShadow="sm">
+      <Heading size="md" mb={5}>📋 Create Task</Heading>
 
       {successMsg && (
         <Alert status="success" borderRadius="md" mb={4}>
@@ -98,12 +105,14 @@ export default function CreateTask() {
       <form onSubmit={handleSubmit}>
         <FormControl mb={3} isRequired>
           <FormLabel>Title</FormLabel>
-          <Input value={name} onChange={(e) => setName(e.target.value)} />
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Task title" />
         </FormControl>
+
         <FormControl mb={3} isRequired>
           <FormLabel>Description</FormLabel>
-          <Input value={description} onChange={(e) => setDescription(e.target.value)} />
+          <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Task description" />
         </FormControl>
+
         <FormControl mb={3} isRequired>
           <FormLabel>Status</FormLabel>
           <Select value={taskStatus} onChange={(e) => setTaskStatus(e.target.value)}>
@@ -113,6 +122,7 @@ export default function CreateTask() {
             ))}
           </Select>
         </FormControl>
+
         <FormControl mb={3} isRequired>
           <FormLabel>Assignee</FormLabel>
           <Select value={assignee} onChange={(e) => setAssignee(e.target.value)}>
@@ -122,6 +132,17 @@ export default function CreateTask() {
             ))}
           </Select>
         </FormControl>
+
+        <FormControl mb={3}>
+          <FormLabel>Project</FormLabel>
+          <Select value={project} onChange={(e) => setProject(e.target.value)}>
+            <option value="">No Project</option>
+            {projects.filter(p => p.status === 1).map(p => (
+              <option key={p._id} value={p._id}>{p.name}</option>
+            ))}
+          </Select>
+        </FormControl>
+
         <FormControl mb={3}>
           <FormLabel>Upload Media</FormLabel>
           <Input type="file" accept="image/*,video/*" multiple onChange={handleFileChange} />

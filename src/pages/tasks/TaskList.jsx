@@ -9,17 +9,20 @@ import { MdAdd, MdEdit, MdDelete } from "react-icons/md";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useSocket } from "../../hooks/useSocket";
+import api from "../../api";
 
 export default function TaskList() {
   const [tasks, setTasks] = useState([]);
   const [staffList, setStaffList] = useState([]);
   const [taskStatuses, setTaskStatuses] = useState([]);
+  const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [assigneeFilter, setAssigneeFilter] = useState("");
+  const [projectFilter, setProjectFilter] = useState("");
   const [updatingId, setUpdatingId] = useState(null);
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
@@ -52,14 +55,16 @@ export default function TaskList() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [taskRes, staffRes, statusRes] = await Promise.all([
+      const [taskRes, staffRes, statusRes, projectRes] = await Promise.all([
         axios.get("/tasks"),
         axios.get("/staff"),
         axios.get("/task-status"),
+        api.get("/projects"),
       ]);
       setTasks(taskRes.data || []);
       setStaffList(staffRes.data || []);
       setTaskStatuses(statusRes.data || []);
+      setProjects(projectRes.data || []);
     } catch {
       showMsg("error", "Error fetching data. Please try again.");
     } finally {
@@ -139,9 +144,10 @@ export default function TaskList() {
 
   const filteredTasks = tasks.filter((task) => {
     const matchSearch = task.name?.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = statusFilter ? task.taskStatus?._id === statusFilter : true;
-    const matchAssignee = canFilterByAssignee && assigneeFilter ? task.assignee?._id === assigneeFilter : true;
-    return matchSearch && matchStatus && matchAssignee;
+    const matchStatus = statusFilter ? task.taskStatus?._id?.toString() === statusFilter : true;
+    const matchAssignee = canFilterByAssignee && assigneeFilter ? task.assignee?._id?.toString() === assigneeFilter : true;
+    const matchProject = projectFilter ? task.project?._id?.toString() === projectFilter : true;
+    return matchSearch && matchStatus && matchAssignee && matchProject;
   });
 
   const totalPages = Math.max(1, Math.ceil(filteredTasks.length / rowsPerPage));
@@ -149,21 +155,8 @@ export default function TaskList() {
   const paginatedTasks = filteredTasks.slice(startIndex, startIndex + rowsPerPage);
 
   return (
-    <Box>
-      <Flex justify="space-between" mb={4} align="center">
-        <Heading size="lg" color="blue.700">Tasks</Heading>
-        {canCreate && (
-          <Button
-            leftIcon={<MdAdd size={18} />}
-            colorScheme="blue"
-            onClick={() => navigate("/admin/tasks/create")}
-          >
-            New Task
-          </Button>
-        )}
-      </Flex>
+    <Box bg="white" p={6} borderRadius="md" boxShadow="md">
 
-      {/* ✅ Messages */}
       {successMsg && (
         <Alert status="success" borderRadius="md" mb={4}>
           <AlertIcon /><AlertDescription>{successMsg}</AlertDescription>
@@ -175,6 +168,21 @@ export default function TaskList() {
         </Alert>
       )}
 
+      {/* HEADER - same style as ProjectsPage */}
+      <Flex justify="space-between" align="center" mb={5}>
+        <Heading size="md">✅ Tasks</Heading>
+        {canCreate && (
+          <Button
+            leftIcon={<MdAdd size={18} />}
+            colorScheme="blue"
+            onClick={() => navigate("/admin/tasks/create")}
+          >
+            New Task
+          </Button>
+        )}
+      </Flex>
+
+      {/* FILTERS */}
       <Flex gap={3} mb={4} wrap="wrap">
         <input
           placeholder="Search tasks..."
@@ -196,104 +204,110 @@ export default function TaskList() {
             ))}
           </Select>
         )}
+        <Select placeholder="Filter by Project" width="200px" value={projectFilter}
+          onChange={(e) => { setProjectFilter(e.target.value); setCurrentPage(1); }}>
+          {projects.map((p) => (
+            <option key={p._id} value={p._id}>{p.name}</option>
+          ))}
+        </Select>
       </Flex>
 
-      <Box bg="white" p={4} borderRadius="md">
-        {loading ? (
-          <Flex justify="center" py={12}>
-            <Spinner size="lg" color="blue.500" thickness="3px" />
-          </Flex>
-        ) : filteredTasks.length === 0 ? (
-          <Flex direction="column" align="center" py={12} color="gray.400">
-            <Text fontSize="sm" fontWeight="medium">No tasks found</Text>
-            <Text fontSize="xs">
-              {search || statusFilter || assigneeFilter
-                ? "Try clearing your filters"
-                : "Create your first task to get started"}
-            </Text>
-          </Flex>
-        ) : (
-          <table style={styles.table}>
-            <thead style={{ background: "#bee3f8" }}>
-              <tr>
-                <th style={styles.th}>#</th>
-                <th style={styles.th}>Title</th>
-                <th style={styles.th}>Status</th>
-                <th style={styles.th}>Assignee</th>
+      {loading ? (
+        <Flex justify="center" py={12}>
+          <Spinner size="lg" color="blue.500" thickness="3px" />
+        </Flex>
+      ) : filteredTasks.length === 0 ? (
+        <Flex direction="column" align="center" py={12} color="gray.400">
+          <Text fontSize="sm" fontWeight="medium">No tasks found</Text>
+          <Text fontSize="xs">
+            {search || statusFilter || assigneeFilter || projectFilter
+              ? "Try clearing your filters"
+              : "Create your first task to get started"}
+          </Text>
+        </Flex>
+      ) : (
+        <table style={styles.table}>
+          <thead style={{ background: "#bee3f8" }}>
+            <tr>
+              <th style={styles.th}>#</th>
+              <th style={styles.th}>Title</th>
+              <th style={styles.th}>Status</th>
+              <th style={styles.th}>Assignee</th>
+              {(canUpdate || canDelete) && (
+                <th style={{ ...styles.th, textAlign: "center" }}>Actions</th>
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {paginatedTasks.map((task, index) => (
+              <tr key={task._id} style={{ transition: "background 0.15s" }}
+                onMouseEnter={e => e.currentTarget.style.background = "#ebf8ff"}
+                onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                <td style={styles.td}>{startIndex + index + 1}</td>
+                <td style={styles.td}>{task.name}</td>
+                <td style={styles.td}>
+                  {canUpdate ? (
+                    <Select size="xs" width="140px"
+                      value={task.taskStatus?._id || ""}
+                      isDisabled={updatingId === task._id + "status"}
+                      onChange={(e) => handleStatusChange(task._id, e.target.value)}
+                      borderColor={
+                        task.taskStatus?.name === "COMPLETED" ? "green.400" :
+                        task.taskStatus?.name === "IN_PROGRESS" ? "blue.400" : "yellow.400"
+                      }>
+                      {taskStatuses.map((s) => (
+                        <option key={s._id} value={s._id}>{s.name}</option>
+                      ))}
+                    </Select>
+                  ) : (
+                    <Badge colorScheme={getStatusColor(task.taskStatus?.name)}>
+                      {task.taskStatus?.name}
+                    </Badge>
+                  )}
+                </td>
+                <td style={styles.td}>
+                  {canUpdate ? (
+                    <Select size="xs" width="140px"
+                      value={task.assignee?._id || ""}
+                      isDisabled={updatingId === task._id + "assignee"}
+                      onChange={(e) => handleAssigneeChange(task._id, e.target.value)}>
+                      {staffList.map((s) => (
+                        <option key={s._id} value={s._id}>{s.name}</option>
+                      ))}
+                    </Select>
+                  ) : (
+                    <Text>{task.assignee?.name || "—"}</Text>
+                  )}
+                </td>
                 {(canUpdate || canDelete) && (
-                  <th style={{ ...styles.th, textAlign: "center" }}>Actions</th>
+                  <td style={{ ...styles.td, textAlign: "center" }}>
+                    <HStack justify="center">
+                      {canUpdate && (
+                        <IconButton
+                          size="sm"
+                          icon={<MdEdit size={16} />}
+                          aria-label="Edit Task"
+                          colorScheme="gray"
+                          onClick={() => navigate(`/admin/tasks/edit/${task._id}`)}
+                        />
+                      )}
+                      {canDelete && (
+                        <IconButton
+                          size="sm"
+                          colorScheme="red"
+                          icon={<MdDelete size={16} />}
+                          aria-label="Delete Task"
+                          onClick={() => handleDelete(task._id)}
+                        />
+                      )}
+                    </HStack>
+                  </td>
                 )}
               </tr>
-            </thead>
-            <tbody>
-              {paginatedTasks.map((task, index) => (
-                <tr key={task._id}>
-                  <td style={styles.td}>{startIndex + index + 1}</td>
-                  <td style={styles.td}>{task.name}</td>
-                  <td style={styles.td}>
-                    {canUpdate ? (
-                      <Select size="xs" width="140px"
-                        value={task.taskStatus?._id || ""}
-                        isDisabled={updatingId === task._id + "status"}
-                        onChange={(e) => handleStatusChange(task._id, e.target.value)}
-                        borderColor={
-                          task.taskStatus?.name === "COMPLETED" ? "green.400" :
-                          task.taskStatus?.name === "IN_PROGRESS" ? "blue.400" : "yellow.400"
-                        }>
-                        {taskStatuses.map((s) => (
-                          <option key={s._id} value={s._id}>{s.name}</option>
-                        ))}
-                      </Select>
-                    ) : (
-                      <Badge colorScheme={getStatusColor(task.taskStatus?.name)}>
-                        {task.taskStatus?.name}
-                      </Badge>
-                    )}
-                  </td>
-                  <td style={styles.td}>
-                    {canUpdate ? (
-                      <Select size="xs" width="140px"
-                        value={task.assignee?._id || ""}
-                        isDisabled={updatingId === task._id + "assignee"}
-                        onChange={(e) => handleAssigneeChange(task._id, e.target.value)}>
-                        {staffList.map((s) => (
-                          <option key={s._id} value={s._id}>{s.name}</option>
-                        ))}
-                      </Select>
-                    ) : (
-                      <Text>{task.assignee?.name || "—"}</Text>
-                    )}
-                  </td>
-                  {(canUpdate || canDelete) && (
-                    <td style={{ ...styles.td, textAlign: "center" }}>
-                      <HStack justify="center">
-                        {canUpdate && (
-                          <IconButton
-                            size="sm"
-                            icon={<MdEdit size={16} />}
-                            aria-label="Edit Task"
-                            colorScheme="gray"
-                            onClick={() => navigate(`/admin/tasks/edit/${task._id}`)}
-                          />
-                        )}
-                        {canDelete && (
-                          <IconButton
-                            size="sm"
-                            colorScheme="red"
-                            icon={<MdDelete size={16} />}
-                            aria-label="Delete Task"
-                            onClick={() => handleDelete(task._id)}
-                          />
-                        )}
-                      </HStack>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Box>
+            ))}
+          </tbody>
+        </table>
+      )}
 
       {!loading && filteredTasks.length > 0 && (
         <Flex mt={4} justify="space-between" align="center">
@@ -328,4 +342,4 @@ const styles = {
   th: { padding: 10, textAlign: "left" },
   td: { padding: 10, borderBottom: "1px solid #e5e7eb" },
   input: { padding: "8px 10px", border: "1px solid #e2e8f0", borderRadius: 6, width: 220 },
-};
+}; 

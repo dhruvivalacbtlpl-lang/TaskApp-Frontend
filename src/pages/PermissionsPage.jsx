@@ -4,7 +4,7 @@ import {
   Alert, AlertIcon, AlertDescription,
 } from "@chakra-ui/react";
 import { ChevronLeftIcon, ChevronRightIcon } from "@chakra-ui/icons";
-import { MdAdd, MdEdit, MdDelete } from "react-icons/md";
+import { MdAdd, MdEdit, MdDelete, MdSecurity } from "react-icons/md";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
@@ -64,42 +64,46 @@ export default function PermissionsPage() {
   if (loading) {
     return (
       <Flex justify="center" align="center" h="60vh">
-        <Spinner size="xl" />
+        <Spinner size="xl" color="blue.500" />
       </Flex>
     );
   }
 
   return (
     <Box bg="white" p={6} borderRadius="md" boxShadow="md">
-      <Flex justify="space-between" align="center" mb={5}>
-        <Heading size="md">Permissions</Heading>
-        {(isAdmin || hasPermission("permissions_create")) && (
-          <Button
-            leftIcon={<MdAdd size={18} />}
-            colorScheme="blue"
-            onClick={() => navigate("/admin/permissions/create")}
-          >
-            Create Permission
-          </Button>
-        )}
-      </Flex>
 
-      {/* ✅ Success Message */}
       {successMsg && (
         <Alert status="success" borderRadius="md" mb={4}>
           <AlertIcon /><AlertDescription>{successMsg}</AlertDescription>
         </Alert>
       )}
-
-      {/* ✅ Error Message */}
       {errorMsg && (
         <Alert status="error" borderRadius="md" mb={4}>
           <AlertIcon /><AlertDescription>{errorMsg}</AlertDescription>
         </Alert>
       )}
 
+      <Flex justify="space-between" align="center" mb={5}>
+        <Flex align="center" gap={2}>
+          <MdSecurity size={22} color="#2b6cb0" />
+          <Heading size="md">Permissions</Heading>
+        </Flex>
+        {(isAdmin || hasPermission("permissions_create")) && (
+          <Button leftIcon={<MdAdd size={18} />} colorScheme="blue"
+            onClick={() => navigate("/admin/permissions/create")}>
+            Create Permission
+          </Button>
+        )}
+      </Flex>
+
       {dataLoading ? (
-        <Flex justify="center" py={10}><Spinner size="lg" /></Flex>
+        <Flex justify="center" py={10}><Spinner size="lg" color="blue.500" /></Flex>
+      ) : permissions.length === 0 ? (
+        <Flex direction="column" align="center" py={12} color="gray.400">
+          <MdSecurity size={40} />
+          <Text fontSize="sm" fontWeight="medium" mt={2}>No permissions found</Text>
+          <Text fontSize="xs">Create your first permission to get started</Text>
+        </Flex>
       ) : (
         <>
           <Table size="sm">
@@ -115,50 +119,36 @@ export default function PermissionsPage() {
               </Tr>
             </Thead>
             <Tbody>
-              {currentPermissions.length === 0 ? (
-                <Tr>
-                  <Td colSpan="5" textAlign="center" color="gray.500" py={6}>
-                    No permissions found
+              {currentPermissions.map((perm, i) => (
+                <Tr key={perm._id}
+                  _hover={{ bg: "blue.50" }}
+                  transition="background 0.15s">
+                  <Td>{startIndex + i + 1}</Td>
+                  <Td fontWeight="600">{perm.name}</Td>
+                  <Td>{perm.value}</Td>
+                  <Td>
+                    <Badge colorScheme={perm.status === 1 ? "green" : "red"}>
+                      {perm.status === 1 ? "Active" : "Inactive"}
+                    </Badge>
                   </Td>
-                </Tr>
-              ) : (
-                currentPermissions.map((perm, i) => (
-                  <Tr key={perm._id}>
-                    <Td>{startIndex + i + 1}</Td>
-                    <Td fontWeight="500">{perm.name}</Td>
-                    <Td>{perm.value}</Td>
-                    <Td>
-                      <Badge colorScheme={perm.status === 1 ? "green" : "red"}>
-                        {perm.status === 1 ? "Active" : "Inactive"}
-                      </Badge>
+                  {(isAdmin || hasPermission("permissions_update") || hasPermission("permissions_delete")) && (
+                    <Td textAlign="center">
+                      <HStack justify="center">
+                        {(isAdmin || hasPermission("permissions_update")) && (
+                          <IconButton size="sm" icon={<MdEdit size={16} />}
+                            aria-label="Edit Permission" colorScheme="gray"
+                            onClick={() => navigate(`/admin/permissions/edit/${perm._id}`)} />
+                        )}
+                        {(isAdmin || hasPermission("permissions_delete")) && (
+                          <IconButton size="sm" colorScheme="red"
+                            icon={<MdDelete size={16} />} aria-label="Delete Permission"
+                            onClick={() => handleDelete(perm._id)} />
+                        )}
+                      </HStack>
                     </Td>
-                    {(isAdmin || hasPermission("permissions_update") || hasPermission("permissions_delete")) && (
-                      <Td textAlign="center">
-                        <HStack justify="center">
-                          {(isAdmin || hasPermission("permissions_update")) && (
-                            <IconButton
-                              size="sm"
-                              icon={<MdEdit size={16} />}
-                              aria-label="Edit Permission"
-                              colorScheme="gray"
-                              onClick={() => navigate(`/admin/permissions/edit/${perm._id}`)}
-                            />
-                          )}
-                          {(isAdmin || hasPermission("permissions_delete")) && (
-                            <IconButton
-                              size="sm"
-                              colorScheme="red"
-                              icon={<MdDelete size={16} />}
-                              aria-label="Delete Permission"
-                              onClick={() => handleDelete(perm._id)}
-                            />
-                          )}
-                        </HStack>
-                      </Td>
-                    )}
-                  </Tr>
-                ))
-              )}
+                  )}
+                </Tr>
+              ))}
             </Tbody>
           </Table>
 
@@ -174,20 +164,12 @@ export default function PermissionsPage() {
               </Select>
             </HStack>
             <HStack>
-              <IconButton
-                size="sm"
-                icon={<ChevronLeftIcon />}
+              <IconButton size="sm" icon={<ChevronLeftIcon />}
                 isDisabled={currentPage === 1}
-                onClick={() => setCurrentPage((p) => p - 1)}
-                aria-label="Previous page"
-              />
-              <IconButton
-                size="sm"
-                icon={<ChevronRightIcon />}
+                onClick={() => setCurrentPage((p) => p - 1)} aria-label="Previous page" />
+              <IconButton size="sm" icon={<ChevronRightIcon />}
                 isDisabled={currentPage === totalPages}
-                onClick={() => setCurrentPage((p) => p + 1)}
-                aria-label="Next page"
-              />
+                onClick={() => setCurrentPage((p) => p + 1)} aria-label="Next page" />
             </HStack>
           </Flex>
         </>

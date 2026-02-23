@@ -1,121 +1,141 @@
 import { useState } from "react";
+import {
+  Box, Flex, Table, Thead, Tbody, Tr, Th, Td,
+  Input, Select, Button, Text, HStack, IconButton, Badge,
+  Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter,
+} from "@chakra-ui/react";
+import { EditIcon, DeleteIcon } from "@chakra-ui/icons";
+import { useNavigate } from "react-router-dom";
+import { useSocket } from "../hooks/useSocket";
 
-export default function StaffList({ staffs, onDelete }) {
+export default function StaffList({ staffs, setStaffs, onDelete, canUpdate, canDelete }) {
   const [search, setSearch] = useState("");
   const [entries, setEntries] = useState(10);
   const [page, setPage] = useState(1);
+  const [deleteId, setDeleteId] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const navigate = useNavigate();
 
-  const filtered = staffs.filter(
-    (s) =>
-      s.name.toLowerCase().includes(search.toLowerCase()) ||
-      s.email.toLowerCase().includes(search.toLowerCase())
+  // ✅ Bug 10 fixed — real-time socket
+  useSocket("staff:created", (s) => setStaffs((prev) => [s, ...prev]));
+  useSocket("staff:updated", (s) => setStaffs((prev) => prev.map((x) => x._id === s._id ? s : x)));
+  useSocket("staff:deleted", ({ _id }) => setStaffs((prev) => prev.filter((x) => x._id !== _id)));
+
+  const filtered = (staffs || []).filter((s) =>
+    s.name?.toLowerCase().includes(search.toLowerCase()) ||
+    s.email?.toLowerCase().includes(search.toLowerCase())
   );
 
-  const totalPages = Math.ceil(filtered.length / entries);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / entries));
   const start = (page - 1) * entries;
   const currentData = filtered.slice(start, start + entries);
 
-  return (
-    <div className="bg-white border">
-      {/* Table controls */}
-      <div className="flex justify-between items-center px-4 py-2 text-sm">
-        <div>
-          Show{" "}
-          <select
-            value={entries}
-            onChange={(e) => {
-              setEntries(Number(e.target.value));
-              setPage(1);
-            }}
-            className="border mx-1 px-2 py-1"
-          >
-            <option>10</option>
-            <option>25</option>
-            <option>50</option>
-          </select>{" "}
-          entries
-        </div>
+  const handleDeleteConfirm = async () => {
+    setDeleting(true);
+    try {
+      await onDelete(deleteId);
+      setDeleteId(null);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
-        <div>
-          Search:{" "}
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
-            className="border px-2 py-1"
-          />
-        </div>
-      </div>
+  return (
+    <Box bg="white" borderRadius="md" boxShadow="sm">
+
+      {/* ✅ Bug 11 fixed — confirm modal */}
+      <Modal isOpen={!!deleteId} onClose={() => setDeleteId(null)} isCentered size="sm">
+        <ModalOverlay />
+        <ModalContent borderRadius="xl">
+          <ModalHeader fontSize="md">Delete Staff</ModalHeader>
+          <ModalBody fontSize="sm" color="gray.500">
+            Are you sure you want to delete this staff member?
+          </ModalBody>
+          <ModalFooter gap={2}>
+            <Button size="sm" variant="ghost" onClick={() => setDeleteId(null)}>Cancel</Button>
+            <Button size="sm" colorScheme="red" isLoading={deleting}
+              onClick={handleDeleteConfirm}>Delete</Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* Controls */}
+      <Flex justify="space-between" align="center" p={4} wrap="wrap" gap={3}>
+        <HStack>
+          <Text fontSize="sm">Show</Text>
+          <Select size="sm" width="80px" value={entries}
+            onChange={(e) => { setEntries(Number(e.target.value)); setPage(1); }}>
+            <option value={10}>10</option>
+            <option value={25}>25</option>
+            <option value={50}>50</option>
+          </Select>
+          <Text fontSize="sm">entries</Text>
+        </HStack>
+        <Input size="sm" placeholder="Search name or email..." width="220px"
+          value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+      </Flex>
 
       {/* Table */}
-      <table className="min-w-full text-sm border-t">
-        <thead>
-          <tr className="bg-red-600 text-white">
-            <th className="px-3 py-2 text-left">#</th>
-            <th className="px-3 py-2 text-left">Name</th>
-            <th className="px-3 py-2 text-left">Email</th>
-            <th className="px-3 py-2 text-left">Phone</th>
-            <th className="px-3 py-2 text-center">Action</th>
-          </tr>
-        </thead>
-        <tbody>
+      <Table size="sm">
+        <Thead bg="#bee3f8">
+          <Tr>
+            <Th>#</Th>
+            <Th>Name</Th>
+            <Th>Email</Th>
+            <Th>Mobile</Th>
+            <Th>Role</Th>
+            {(canUpdate || canDelete) && <Th textAlign="center">Actions</Th>}
+          </Tr>
+        </Thead>
+        <Tbody>
           {currentData.length === 0 ? (
-            <tr>
-              <td colSpan="5" className="text-center py-4">
-                No data available
-              </td>
-            </tr>
+            <Tr>
+              <Td colSpan={6} textAlign="center" py={8} color="gray.400">
+                No staff found
+              </Td>
+            </Tr>
           ) : (
             currentData.map((staff, index) => (
-              <tr key={staff._id} className="border-b">
-                <td className="px-3 py-2">
-                  {start + index + 1}
-                </td>
-                <td className="px-3 py-2">{staff.name}</td>
-                <td className="px-3 py-2">{staff.email}</td>
-                <td className="px-3 py-2">{staff.mobile}</td>
-                <td className="px-3 py-2 text-center">
-                  <button
-                    onClick={() => onDelete(staff._id)}
-                    className="bg-red-500 text-white px-2 py-1 text-xs rounded"
-                  >
-                    Delete
-                  </button>
-                </td>
-              </tr>
+              <Tr key={staff._id} _hover={{ bg: "gray.50" }}>
+                <Td>{start + index + 1}</Td>
+                <Td fontWeight="500">{staff.name}</Td>
+                <Td>{staff.email}</Td>
+                <Td>{staff.mobile}</Td>
+                <Td>
+                  <Badge colorScheme="blue" borderRadius="full" px={2}>
+                    {staff.role?.name || "—"}
+                  </Badge>
+                </Td>
+                {(canUpdate || canDelete) && (
+                  <Td textAlign="center">
+                    <HStack justify="center">
+                      {canUpdate && (
+                        <IconButton size="sm" icon={<EditIcon />}
+                          onClick={() => navigate(`/admin/staff/edit/${staff._id}`)} />
+                      )}
+                      {canDelete && (
+                        <IconButton size="sm" colorScheme="red" icon={<DeleteIcon />}
+                          onClick={() => setDeleteId(staff._id)} />
+                      )}
+                    </HStack>
+                  </Td>
+                )}
+              </Tr>
             ))
           )}
-        </tbody>
-      </table>
+        </Tbody>
+      </Table>
 
       {/* Pagination */}
-      <div className="flex justify-between items-center px-4 py-2 text-sm">
-        <div>
-          Showing {start + 1} to{" "}
-          {Math.min(start + entries, filtered.length)} of{" "}
-          {filtered.length} entries
-        </div>
-
-        <div className="flex gap-1">
-          <button
-            disabled={page === 1}
-            onClick={() => setPage(page - 1)}
-            className="border px-3 py-1 disabled:opacity-50"
-          >
-            Previous
-          </button>
-          <button
-            disabled={page === totalPages}
-            onClick={() => setPage(page + 1)}
-            className="border px-3 py-1 disabled:opacity-50"
-          >
-            Next
-          </button>
-        </div>
-      </div>
-    </div>
+      <Flex justify="space-between" align="center" p={4}>
+        <Text fontSize="sm" color="gray.500">
+          Showing {filtered.length === 0 ? 0 : start + 1} to {Math.min(start + entries, filtered.length)} of {filtered.length} entries
+        </Text>
+        <HStack>
+          <Button size="sm" onClick={() => setPage(p => p - 1)} isDisabled={page === 1}>Previous</Button>
+          <Button size="sm" onClick={() => setPage(p => p + 1)} isDisabled={page === totalPages}>Next</Button>
+        </HStack>
+      </Flex>
+    </Box>
   );
 }

@@ -4,25 +4,27 @@ import {
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import NotificationBell from "../components/NotificationBell";
+import api from "../api";
 import {
-  MdDashboard,
-  MdPeople,
-  MdVpnKey,
-  MdSecurity,
-  MdCheckBox,
-  MdLabel,
-  MdPerson,
-  MdLogout,
-  MdAssignment,
+  MdDashboard, MdPeople, MdVpnKey, MdSecurity,
+  MdCheckBox, MdLabel, MdPerson, MdLogout, MdAssignment, MdFolder,
 } from "react-icons/md";
 
 function AdminLayout() {
   const navigate = useNavigate();
-  const { hasPermission, user } = useAuth();
+  const { hasPermission, user, logout } = useAuth();
 
-  const handleLogout = () => {
-    localStorage.clear();
-    navigate("/");
+  // ✅ Bug 2 fixed — call backend logout to clear cookie
+  const handleLogout = async () => {
+    try {
+      await api.post("/auth/logout");
+    } catch (err) {
+      console.error("Logout error:", err);
+    } finally {
+      logout();
+      localStorage.clear();
+      navigate("/");
+    }
   };
 
   const linkStyle = ({ isActive }) => ({
@@ -46,9 +48,7 @@ function AdminLayout() {
       <Box w="220px" bg="blue.600" color="white" p="5">
         <Flex align="center" gap="2" mb="8">
           <MdAssignment size={24} />
-          <Text fontSize="xl" fontWeight="bold">
-            Task Manager
-          </Text>
+          <Text fontSize="xl" fontWeight="bold">Task Manager</Text>
         </Flex>
 
         <VStack align="stretch" spacing="2">
@@ -61,6 +61,11 @@ function AdminLayout() {
               <MdPeople size={18} /> Staff
             </NavLink>
           )}
+
+          {/* ✅ Bug 1 fixed — show projects to all logged in users */}
+          <NavLink to="/admin/projects" style={linkStyle}>
+            <MdFolder size={18} /> Projects
+          </NavLink>
 
           {(isAdmin || hasPermission("role_read")) && (
             <NavLink to="/admin/roles" style={linkStyle}>
@@ -91,14 +96,8 @@ function AdminLayout() {
       {/* MAIN */}
       <Flex flex="1" direction="column" bg="gray.100">
         {/* TOPBAR */}
-        <Flex
-          h="60px"
-          bg="white"
-          px="6"
-          align="center"
-          justify="space-between"
-          boxShadow="sm"
-        >
+        <Flex h="60px" bg="white" px="6" align="center"
+          justify="space-between" boxShadow="sm">
           <Flex align="center" gap="2">
             <MdPerson size={20} color="#4A5568" />
             <Text fontWeight="500" color="gray.700">
@@ -108,20 +107,14 @@ function AdminLayout() {
 
           <HStack spacing="3">
             <NotificationBell />
-            <Button
-              size="sm"
-              colorScheme="blue"
+            <Button size="sm" colorScheme="blue"
               leftIcon={<MdPerson size={16} />}
-              onClick={() => navigate("/admin/profile")}
-            >
+              onClick={() => navigate("/admin/profile")}>
               Profile
             </Button>
-            <Button
-              size="sm"
-              colorScheme="red"
+            <Button size="sm" colorScheme="red"
               leftIcon={<MdLogout size={16} />}
-              onClick={handleLogout}
-            >
+              onClick={handleLogout}>
               Logout
             </Button>
           </HStack>
