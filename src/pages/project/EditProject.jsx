@@ -6,11 +6,13 @@ import {
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import api from "../../api";
+import { useAuth } from "../../context/AuthContext";
 
 export default function EditProject() {
   const { id } = useParams();
   const navigate = useNavigate();
   const toast = useToast();
+  const { refreshProjects } = useAuth(); // ✅ context
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -47,6 +49,7 @@ export default function EditProject() {
     setSaving(true);
     try {
       await api.put(`/projects/${id}`, { name, description, status, members });
+      await refreshProjects(); // ✅ update context so dropdown updates too
       toast({ title: "Project updated!", status: "success", duration: 2000 });
       navigate("/admin/projects");
     } catch (err) {

@@ -1,11 +1,11 @@
 import {
-  Box, Flex, Heading, Button, Table, Thead, Tbody, Tr, Th, Td,
+  Box, Heading, Button, Table, Thead, Tbody, Tr, Th, Td,
   IconButton, Badge, Spinner, HStack, Text, Select, Avatar, AvatarGroup,
-  Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter,
+  Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, Flex,
 } from "@chakra-ui/react";
 import { EditIcon, DeleteIcon, AddIcon } from "@chakra-ui/icons";
 import { MdFolder } from "react-icons/md";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../api";
 import { useSocket } from "../../hooks/useSocket";
@@ -13,43 +13,28 @@ import { useAuth } from "../../context/AuthContext";
 
 export default function ProjectsPage() {
   const navigate = useNavigate();
-  const { user, hasPermission } = useAuth();
+  const { user, hasPermission, projects, projectsLoading, refreshProjects } = useAuth();
   const isAdmin = user?.role?.name?.toLowerCase() === "admin";
 
   const canCreate = isAdmin || hasPermission("project_create");
   const canUpdate = isAdmin || hasPermission("project_update");
   const canDelete = isAdmin || hasPermission("project_delete");
 
-  const [projects, setProjects] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [deleteId, setDeleteId] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(5);
 
-  const fetchProjects = async () => {
-    try {
-      setLoading(true);
-      const res = await api.get("/projects");
-      setProjects(res.data || []);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { fetchProjects(); }, []);
-
-  useSocket("project:created", (p) => setProjects((prev) => [p, ...prev]));
-  useSocket("project:updated", (p) => setProjects((prev) => prev.map((x) => x._id === p._id ? p : x)));
-  useSocket("project:deleted", ({ _id }) => setProjects((prev) => prev.filter((x) => x._id !== _id)));
+  useSocket("project:created", () => refreshProjects());
+  useSocket("project:updated", () => refreshProjects());
+  useSocket("project:deleted", () => refreshProjects());
 
   const handleDeleteConfirm = async () => {
     setDeleting(true);
     try {
       await api.delete(`/projects/${deleteId}`);
       setDeleteId(null);
+      refreshProjects();
     } catch (err) {
       console.error(err);
     } finally {
@@ -57,9 +42,10 @@ export default function ProjectsPage() {
     }
   };
 
+  const allProjects = projects;
   const startIndex = (currentPage - 1) * rowsPerPage;
-  const currentProjects = projects.slice(startIndex, startIndex + rowsPerPage);
-  const totalPages = Math.max(1, Math.ceil(projects.length / rowsPerPage));
+  const currentProjects = allProjects.slice(startIndex, startIndex + rowsPerPage);
+  const totalPages = Math.max(1, Math.ceil(allProjects.length / rowsPerPage));
 
   return (
     <Box bg="white" p={6} borderRadius="md" boxShadow="md">
@@ -92,9 +78,9 @@ export default function ProjectsPage() {
         )}
       </Flex>
 
-      {loading ? (
+      {projectsLoading ? (
         <Flex justify="center" py={10}><Spinner size="lg" color="blue.500" /></Flex>
-      ) : projects.length === 0 ? (
+      ) : allProjects.length === 0 ? (
         <Flex direction="column" align="center" py={12} color="gray.400">
           <MdFolder size={40} />
           <Text fontSize="sm" fontWeight="medium" mt={2}>No projects found</Text>
@@ -115,11 +101,20 @@ export default function ProjectsPage() {
             </Thead>
             <Tbody>
               {currentProjects.map((project, i) => (
-                <Tr key={project._id}
-                  _hover={{ bg: "blue.50" }}
-                  transition="background 0.15s">
+                <Tr key={project._id} _hover={{ bg: "blue.50" }} transition="background 0.15s">
                   <Td>{startIndex + i + 1}</Td>
-                  <Td fontWeight="600">{project.name}</Td>
+
+                  {/* ✅ Clickable project name */}
+                  <Td
+                    fontWeight="600"
+                    color="blue.600"
+                    cursor="pointer"
+                    _hover={{ textDecoration: "underline", color: "blue.800" }}
+                    onClick={() => navigate(`/admin/projects/${project._id}/detail`)}
+                  >
+                    {project.name}
+                  </Td>
+
                   <Td color="gray.500" fontSize="sm" maxW="200px">
                     <Text noOfLines={1}>{project.description || "—"}</Text>
                   </Td>

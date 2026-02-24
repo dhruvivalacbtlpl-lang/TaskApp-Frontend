@@ -19,9 +19,12 @@ import TaskStatusList from "./pages/taskstatus/TaskStatusList";
 import EditTaskStatus from "./pages/taskstatus/EditTaskStatus";
 import EditStaffPage from "./pages/EditStaffPage";
 import Dashboard from "./pages/Dashboard";
-import ProjectsPage from "./pages/project/ProjectsPage";       // ✅ NEW
-import CreateProject from "./pages/project/CreateProject";     // ✅ NEW
-import EditProject from "./pages/project/EditProject";       // ✅ NEW
+import ProjectsPage from "./pages/project/ProjectsPage";
+import CreateProject from "./pages/project/CreateProject";
+import EditProject from "./pages/project/EditProject";
+import ProjectDetail from "./pages/project/ProjectDetail"; // ✅ NEW
+import TeamPage from "./pages/Team/TeamPage";  
+import IssuesPage from "./pages/tasks/IssuesPage";              // ✅ NEW
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -33,15 +36,10 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Login */}
         <Route path="/" element={<Login />} />
 
-        {/* Admin layout */}
         <Route path="/admin" element={<AdminLayout />}>
-
-          {/* Dashboard */}
           <Route index element={<Dashboard />} />
-
           <Route path="profile" element={<AdminProfile />} />
 
           <Route path="staff">
@@ -70,13 +68,15 @@ function App() {
             <Route path="edit/:id" element={<EditTaskStatus />} />
           </Route>
 
-          {/* ✅ NEW: Projects routes */}
           <Route path="projects">
             <Route index element={<ProjectsPage />} />
             <Route path="create" element={<CreateProject />} />
             <Route path="edit/:id" element={<EditProject />} />
+            <Route path=":id/detail" element={<ProjectDetail />} /> 
           </Route>
 
+          <Route path="team" element={<TeamPage />} /> 
+          <Route path="issues" element={<IssuesPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />
