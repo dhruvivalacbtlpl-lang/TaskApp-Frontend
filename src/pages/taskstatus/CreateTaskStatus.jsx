@@ -2,8 +2,9 @@ import { useState } from "react";
 import {
   Box, Heading, FormControl, FormLabel, Input,
   Select, Button, VStack, Alert, AlertIcon, AlertDescription,
+  useColorModeValue,
 } from "@chakra-ui/react";
-import axios from "axios";
+import api from "../../api";
 import { useNavigate } from "react-router-dom";
 
 function CreateTaskStatus() {
@@ -15,21 +16,16 @@ function CreateTaskStatus() {
 
   const navigate = useNavigate();
 
+  const cardBg    = useColorModeValue("white", "gray.800");
+  const textColor = useColorModeValue("gray.800", "white");
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg(""); setSuccessMsg("");
-
-    if (!name.trim()) {
-      setErrorMsg("Status name is required.");
-      return;
-    }
-
+    if (!name.trim()) { setErrorMsg("Status name is required."); return; }
     try {
       setLoading(true);
-      await axios.post("/task-status", {
-        name: name.toUpperCase(),
-        status,
-      });
+      await api.post("/task-status", { name: name.toUpperCase(), status });
       setSuccessMsg("Task status created successfully!");
       setTimeout(() => navigate("/admin/task-status"), 1500);
     } catch (err) {
@@ -40,10 +36,9 @@ function CreateTaskStatus() {
   };
 
   return (
-    <Box bg="white" p="6" borderRadius="md" boxShadow="sm" maxW="600px">
-      <Heading size="md" mb="5">Create Task Status</Heading>
+    <Box bg={cardBg} p="6" borderRadius="md" boxShadow="sm" maxW="600px">
+      <Heading size="md" mb="5" color={textColor}>Create Task Status</Heading>
 
-      {/* ✅ Messages */}
       {successMsg && (
         <Alert status="success" borderRadius="md" mb={4}>
           <AlertIcon /><AlertDescription>{successMsg}</AlertDescription>
@@ -58,7 +53,7 @@ function CreateTaskStatus() {
       <form onSubmit={handleSubmit}>
         <VStack spacing="4" align="stretch">
           <FormControl isRequired>
-            <FormLabel>Status Name</FormLabel>
+            <FormLabel color={textColor}>Status Name</FormLabel>
             <Input
               placeholder="PENDING / IN_PROGRESS / COMPLETED"
               value={name}
@@ -66,7 +61,7 @@ function CreateTaskStatus() {
             />
           </FormControl>
           <FormControl>
-            <FormLabel>Status</FormLabel>
+            <FormLabel color={textColor}>Status</FormLabel>
             <Select value={status} onChange={(e) => setStatus(e.target.value)}>
               <option value="ACTIVE">Active</option>
               <option value="INACTIVE">Inactive</option>

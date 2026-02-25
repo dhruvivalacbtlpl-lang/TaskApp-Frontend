@@ -1,10 +1,11 @@
 import {
   Box, Button, Checkbox, Flex, Heading, Input, Select,
   Table, Thead, Tbody, Tr, Th, Td, Alert, AlertIcon, AlertDescription,
+  useColorModeValue,
 } from "@chakra-ui/react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import api from "../api";
 
 export default function CreateRole() {
   const navigate = useNavigate();
@@ -18,15 +19,19 @@ export default function CreateRole() {
   const [errorMsg, setErrorMsg] = useState("");
   const [warnMsg, setWarnMsg] = useState("");
 
-  useEffect(() => {
-    fetchPermissions();
-  }, []);
+  const cardBg    = useColorModeValue("white", "gray.800");
+  const theadBg   = useColorModeValue("#bee3f8", "#2a4365");
+  const textColor = useColorModeValue("gray.800", "white");
+  const thColor   = useColorModeValue("blue.700", "white");
+
+  useEffect(() => { fetchPermissions(); }, []);
 
   const fetchPermissions = async () => {
     try {
-      const res = await axios.get("/permissions");
+      const res = await api.get("/permissions");
+      const data = Array.isArray(res.data) ? res.data : [];
       const grouped = {};
-      res.data.forEach((p) => {
+      data.forEach((p) => {
         const [module, action] = p.value.split("_");
         if (!grouped[module]) grouped[module] = new Set();
         grouped[module].add(action);
@@ -51,23 +56,17 @@ export default function CreateRole() {
     const modulePerms = actions.map((a) => `${module}_${a}`);
     const allSelected = modulePerms.every((p) => permissions.includes(p));
     setPermissions((prev) =>
-      allSelected
-        ? prev.filter((p) => !modulePerms.includes(p))
-        : [...new Set([...prev, ...modulePerms])]
+      allSelected ? prev.filter((p) => !modulePerms.includes(p))
+                  : [...new Set([...prev, ...modulePerms])]
     );
   };
 
   const handleCreate = async () => {
     setErrorMsg(""); setSuccessMsg(""); setWarnMsg("");
-
-    if (!name.trim()) {
-      setWarnMsg("Role name is required.");
-      return;
-    }
-
+    if (!name.trim()) { setWarnMsg("Role name is required."); return; }
     try {
       setLoading(true);
-      await axios.post("/role/create", { name, status, permissions });
+      await api.post("/role/create", { name, status, permissions });
       setSuccessMsg("Role created successfully!");
       setTimeout(() => navigate("/admin/roles"), 1500);
     } catch (err) {
@@ -79,34 +78,21 @@ export default function CreateRole() {
 
   return (
     <Box>
-      <Heading size="md" mb={4}>Create Role</Heading>
+      <Heading size="md" mb={4} color={textColor}>Create Role</Heading>
 
-      {/* ✅ Messages */}
-      {successMsg && (
-        <Alert status="success" borderRadius="md" mb={4}>
-          <AlertIcon /><AlertDescription>{successMsg}</AlertDescription>
-        </Alert>
-      )}
-      {errorMsg && (
-        <Alert status="error" borderRadius="md" mb={4}>
-          <AlertIcon /><AlertDescription>{errorMsg}</AlertDescription>
-        </Alert>
-      )}
-      {warnMsg && (
-        <Alert status="warning" borderRadius="md" mb={4}>
-          <AlertIcon /><AlertDescription>{warnMsg}</AlertDescription>
-        </Alert>
-      )}
+      {successMsg && <Alert status="success" borderRadius="md" mb={4}><AlertIcon /><AlertDescription>{successMsg}</AlertDescription></Alert>}
+      {errorMsg   && <Alert status="error"   borderRadius="md" mb={4}><AlertIcon /><AlertDescription>{errorMsg}</AlertDescription></Alert>}
+      {warnMsg    && <Alert status="warning" borderRadius="md" mb={4}><AlertIcon /><AlertDescription>{warnMsg}</AlertDescription></Alert>}
 
-      <Box bg="white" p={6} borderRadius="md" mb={6} boxShadow="sm">
+      <Box bg={cardBg} p={6} borderRadius="md" mb={6} boxShadow="sm">
         <Flex gap={4}>
           <Box flex="1">
-            <Heading size="xs" mb={1}>Name *</Heading>
+            <Heading size="xs" mb={1} color={textColor}>Name *</Heading>
             <Input placeholder="Enter role name" value={name}
               onChange={(e) => setName(e.target.value)} />
           </Box>
           <Box w="250px">
-            <Heading size="xs" mb={1}>Status *</Heading>
+            <Heading size="xs" mb={1} color={textColor}>Status *</Heading>
             <Select value={status} onChange={(e) => setStatus(Number(e.target.value))}>
               <option value={1}>Active</option>
               <option value={0}>Inactive</option>
@@ -115,22 +101,22 @@ export default function CreateRole() {
         </Flex>
       </Box>
 
-      <Box bg="white" p={6} borderRadius="md" boxShadow="sm">
+      <Box bg={cardBg} p={6} borderRadius="md" boxShadow="sm">
         <Table size="sm" variant="simple">
-          <Thead bg="blue.300">
+          <Thead bg={theadBg}>
             <Tr>
-              <Th color="white">PERMISSION</Th>
-              <Th color="white">ALL</Th>
-              <Th color="white">READ</Th>
-              <Th color="white">CREATE</Th>
-              <Th color="white">UPDATE</Th>
-              <Th color="white">DELETE</Th>
+              <Th color={thColor}>PERMISSION</Th>
+              <Th color={thColor}>ALL</Th>
+              <Th color={thColor}>READ</Th>
+              <Th color={thColor}>CREATE</Th>
+              <Th color={thColor}>UPDATE</Th>
+              <Th color={thColor}>DELETE</Th>
             </Tr>
           </Thead>
           <Tbody>
             {Object.keys(modules).map((module) => (
               <Tr key={module}>
-                <Td>{module}</Td>
+                <Td color={textColor}>{module}</Td>
                 <Td>
                   <Checkbox
                     isChecked={["read", "create", "update", "delete"].every(

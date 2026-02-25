@@ -1,19 +1,17 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import App from "./App.jsx";
+import { ChakraProvider, ColorModeScript } from "@chakra-ui/react";
+import App from "./App";
+import theme from "./theme";
 import { AuthProvider } from "./context/AuthContext";
-import { ChakraProvider } from "@chakra-ui/react";
-import axios from "axios";
-
-axios.defaults.baseURL = "https://w2ml73xv-5000.inc1.devtunnels.ms/api";
-axios.defaults.withCredentials = true;
 
 ReactDOM.createRoot(document.getElementById("root")).render(
-  <AuthProvider>
-    <React.StrictMode>
-      <ChakraProvider>
+  <React.StrictMode>
+    <ColorModeScript initialColorMode={theme.config.initialColorMode} />
+    <ChakraProvider theme={theme}>
+      <AuthProvider>
         <App />
-      </ChakraProvider>
-    </React.StrictMode>
-  </AuthProvider>
+      </AuthProvider>
+    </ChakraProvider>
+  </React.StrictMode>
 );

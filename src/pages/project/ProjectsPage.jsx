@@ -2,6 +2,7 @@ import {
   Box, Heading, Button, Table, Thead, Tbody, Tr, Th, Td,
   IconButton, Badge, Spinner, HStack, Text, Select, Avatar, AvatarGroup,
   Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, Flex,
+  useColorModeValue,
 } from "@chakra-ui/react";
 import { EditIcon, DeleteIcon, AddIcon } from "@chakra-ui/icons";
 import { MdFolder } from "react-icons/md";
@@ -24,6 +25,14 @@ export default function ProjectsPage() {
   const [deleting, setDeleting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(5);
+
+  const cardBg    = useColorModeValue("white", "gray.800");
+  const theadBg   = useColorModeValue("#bee3f8", "#2a4365");
+  const textColor = useColorModeValue("gray.800", "white");
+  const subColor  = useColorModeValue("gray.500", "gray.400");
+  const rowHover  = useColorModeValue("blue.50", "gray.700");
+  const thColor   = useColorModeValue("blue.700", "white");
+  const iconClr   = useColorModeValue("#2b6cb0", "#63b3ed");
 
   useSocket("project:created", () => refreshProjects());
   useSocket("project:updated", () => refreshProjects());
@@ -48,7 +57,7 @@ export default function ProjectsPage() {
   const totalPages = Math.max(1, Math.ceil(allProjects.length / rowsPerPage));
 
   return (
-    <Box bg="white" p={6} borderRadius="md" boxShadow="md">
+    <Box bg={cardBg} p={6} borderRadius="md" boxShadow="md">
 
       <Modal isOpen={!!deleteId} onClose={() => setDeleteId(null)} isCentered size="sm">
         <ModalOverlay />
@@ -67,8 +76,8 @@ export default function ProjectsPage() {
 
       <Flex justify="space-between" align="center" mb={5}>
         <Flex align="center" gap={2}>
-          <MdFolder size={22} color="#2b6cb0" />
-          <Heading size="md">Projects</Heading>
+          <MdFolder size={22} color={iconClr} />
+          <Heading size="md" color={textColor}>Projects</Heading>
         </Flex>
         {canCreate && (
           <Button leftIcon={<AddIcon />} colorScheme="blue"
@@ -81,7 +90,7 @@ export default function ProjectsPage() {
       {projectsLoading ? (
         <Flex justify="center" py={10}><Spinner size="lg" color="blue.500" /></Flex>
       ) : allProjects.length === 0 ? (
-        <Flex direction="column" align="center" py={12} color="gray.400">
+        <Flex direction="column" align="center" py={12} color={subColor}>
           <MdFolder size={40} />
           <Text fontSize="sm" fontWeight="medium" mt={2}>No projects found</Text>
           <Text fontSize="xs">Create your first project to get started</Text>
@@ -89,33 +98,26 @@ export default function ProjectsPage() {
       ) : (
         <>
           <Table size="sm">
-            <Thead bg="#bee3f8">
+            <Thead bg={theadBg}>
               <Tr>
-                <Th>#</Th>
-                <Th>Name</Th>
-                <Th>Description</Th>
-                <Th>Members</Th>
-                <Th>Status</Th>
-                {(canUpdate || canDelete) && <Th textAlign="center">Actions</Th>}
+                <Th color={thColor}>#</Th>
+                <Th color={thColor}>Name</Th>
+                <Th color={thColor}>Description</Th>
+                <Th color={thColor}>Members</Th>
+                <Th color={thColor}>Status</Th>
+                {(canUpdate || canDelete) && <Th color={thColor} textAlign="center">Actions</Th>}
               </Tr>
             </Thead>
             <Tbody>
               {currentProjects.map((project, i) => (
-                <Tr key={project._id} _hover={{ bg: "blue.50" }} transition="background 0.15s">
-                  <Td>{startIndex + i + 1}</Td>
-
-                  {/* ✅ Clickable project name */}
-                  <Td
-                    fontWeight="600"
-                    color="blue.600"
-                    cursor="pointer"
-                    _hover={{ textDecoration: "underline", color: "blue.800" }}
-                    onClick={() => navigate(`/admin/projects/${project._id}/detail`)}
-                  >
+                <Tr key={project._id} _hover={{ bg: rowHover }} transition="background 0.15s">
+                  <Td color={textColor}>{startIndex + i + 1}</Td>
+                  <Td fontWeight="600" color="blue.400" cursor="pointer"
+                    _hover={{ textDecoration: "underline", color: "blue.300" }}
+                    onClick={() => navigate(`/admin/projects/${project._id}/detail`)}>
                     {project.name}
                   </Td>
-
-                  <Td color="gray.500" fontSize="sm" maxW="200px">
+                  <Td color={subColor} fontSize="sm" maxW="200px">
                     <Text noOfLines={1}>{project.description || "—"}</Text>
                   </Td>
                   <Td>
@@ -126,7 +128,7 @@ export default function ProjectsPage() {
                         ))}
                       </AvatarGroup>
                     ) : (
-                      <Text fontSize="xs" color="gray.400">No members</Text>
+                      <Text fontSize="xs" color={subColor}>No members</Text>
                     )}
                   </Td>
                   <Td>
@@ -138,7 +140,7 @@ export default function ProjectsPage() {
                     <Td textAlign="center">
                       <HStack justify="center">
                         {canUpdate && (
-                          <IconButton size="sm" icon={<EditIcon />}
+                          <IconButton size="sm" icon={<EditIcon />} colorScheme="gray"
                             onClick={() => navigate(`/admin/projects/edit/${project._id}`)} />
                         )}
                         {canDelete && (
@@ -154,9 +156,9 @@ export default function ProjectsPage() {
           </Table>
 
           <Flex mt={4} justify="space-between" align="center">
-            <Text fontSize="sm">Page {currentPage} of {totalPages}</Text>
+            <Text fontSize="sm" color={textColor}>Page {currentPage} of {totalPages}</Text>
             <HStack>
-              <Text fontSize="sm">Rows</Text>
+              <Text fontSize="sm" color={textColor}>Rows</Text>
               <Select size="sm" width="80px" value={rowsPerPage}
                 onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}>
                 <option value={5}>5</option>

@@ -1,12 +1,13 @@
 import {
   Box, Button, Flex, Heading, Table, Thead, Tbody, Tr, Th, Td,
   IconButton, Badge, Spinner, HStack, Text, Select, Alert, AlertIcon, AlertDescription,
+  useColorModeValue,
 } from "@chakra-ui/react";
 import { ChevronLeftIcon, ChevronRightIcon } from "@chakra-ui/icons";
 import { MdAdd, MdEdit, MdDelete, MdVpnKey } from "react-icons/md";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import api from "../api";
 import { useAuth } from "../context/AuthContext";
 
 export default function RolesPage() {
@@ -14,7 +15,7 @@ export default function RolesPage() {
   const { hasPermission, user } = useAuth();
 
   const isAdmin = user?.role?.name?.toLowerCase() === "admin";
-  const canRead = isAdmin || hasPermission("role_read");
+  const canRead   = isAdmin || hasPermission("role_read");
   const canCreate = isAdmin || hasPermission("role_create");
   const canUpdate = isAdmin || hasPermission("role_update");
   const canDelete = isAdmin || hasPermission("role_delete");
@@ -27,6 +28,14 @@ export default function RolesPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(5);
 
+  const cardBg    = useColorModeValue("white", "gray.800");
+  const theadBg   = useColorModeValue("#bee3f8", "#2a4365");
+  const textColor = useColorModeValue("gray.800", "white");
+  const subColor  = useColorModeValue("gray.400", "gray.400");
+  const rowHover  = useColorModeValue("blue.50", "gray.700");
+  const thColor   = useColorModeValue("blue.700", "white");
+  const iconClr   = useColorModeValue("#2b6cb0", "#63b3ed");
+
   useEffect(() => {
     if (!canRead) navigate("/admin");
   }, []);
@@ -34,8 +43,8 @@ export default function RolesPage() {
   const fetchRoles = async () => {
     try {
       setLoading(true);
-      const res = await axios.get("/role");
-      setRoles(res.data || []);
+      const res = await api.get("/role");
+      setRoles(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       setErrorMsg("Failed to fetch roles. Please try again.");
     } finally {
@@ -43,13 +52,11 @@ export default function RolesPage() {
     }
   };
 
-  useEffect(() => {
-    fetchRoles();
-  }, []);
+  useEffect(() => { fetchRoles(); }, []);
 
   const deleteRole = async (id) => {
     try {
-      await axios.delete(`/role/${id}`);
+      await api.delete(`/role/${id}`);
       setSuccessMsg("Role deleted successfully.");
       setErrorMsg("");
       fetchRoles();
@@ -59,13 +66,12 @@ export default function RolesPage() {
     }
   };
 
-  const startIndex = (currentPage - 1) * rowsPerPage;
-  const currentRoles = roles.slice(startIndex, startIndex + rowsPerPage);
-  const totalPages = Math.max(1, Math.ceil(roles.length / rowsPerPage));
+  const startIndex    = (currentPage - 1) * rowsPerPage;
+  const currentRoles  = roles.slice(startIndex, startIndex + rowsPerPage);
+  const totalPages    = Math.max(1, Math.ceil(roles.length / rowsPerPage));
 
   return (
-    <Box bg="white" p={6} borderRadius="md" boxShadow="md">
-
+    <Box bg={cardBg} p={6} borderRadius="md" boxShadow="md">
       {successMsg && (
         <Alert status="success" borderRadius="md" mb={4}>
           <AlertIcon /><AlertDescription>{successMsg}</AlertDescription>
@@ -79,8 +85,8 @@ export default function RolesPage() {
 
       <Flex justify="space-between" align="center" mb={5}>
         <Flex align="center" gap={2}>
-          <MdVpnKey size={22} color="#2b6cb0" />
-          <Heading size="md">Roles</Heading>
+          <MdVpnKey size={22} color={iconClr} />
+          <Heading size="md" color={textColor}>Roles</Heading>
         </Flex>
         {canCreate && (
           <Button leftIcon={<MdAdd size={18} />} colorScheme="blue"
@@ -93,7 +99,7 @@ export default function RolesPage() {
       {loading ? (
         <Flex justify="center" py={10}><Spinner size="lg" color="blue.500" /></Flex>
       ) : roles.length === 0 ? (
-        <Flex direction="column" align="center" py={12} color="gray.400">
+        <Flex direction="column" align="center" py={12} color={subColor}>
           <MdVpnKey size={40} />
           <Text fontSize="sm" fontWeight="medium" mt={2}>No roles found</Text>
           <Text fontSize="xs">Create your first role to get started</Text>
@@ -101,28 +107,26 @@ export default function RolesPage() {
       ) : (
         <>
           <Table size="sm">
-            <Thead bg="#bee3f8">
+            <Thead bg={theadBg}>
               <Tr>
-                <Th>#</Th>
-                <Th>Name</Th>
-                <Th>Status</Th>
-                <Th>Permissions Count</Th>
-                {showActionColumn && <Th textAlign="center">Action</Th>}
+                <Th color={thColor}>#</Th>
+                <Th color={thColor}>Name</Th>
+                <Th color={thColor}>Status</Th>
+                <Th color={thColor}>Permissions Count</Th>
+                {showActionColumn && <Th color={thColor} textAlign="center">Action</Th>}
               </Tr>
             </Thead>
             <Tbody>
               {currentRoles.map((role, i) => (
-                <Tr key={role._id}
-                  _hover={{ bg: "blue.50" }}
-                  transition="background 0.15s">
-                  <Td>{startIndex + i + 1}</Td>
-                  <Td fontWeight="600">{role.name}</Td>
+                <Tr key={role._id} _hover={{ bg: rowHover }} transition="background 0.15s">
+                  <Td color={textColor}>{startIndex + i + 1}</Td>
+                  <Td color={textColor} fontWeight="600">{role.name}</Td>
                   <Td>
                     <Badge colorScheme={role.status === 1 ? "green" : "red"}>
                       {role.status === 1 ? "Active" : "Inactive"}
                     </Badge>
                   </Td>
-                  <Td>{role.permissions?.length || 0}</Td>
+                  <Td color={textColor}>{role.permissions?.length || 0}</Td>
                   {showActionColumn && (
                     <Td textAlign="center">
                       <HStack justify="center">
@@ -145,9 +149,9 @@ export default function RolesPage() {
           </Table>
 
           <Flex mt={4} justify="space-between" align="center">
-            <Text fontSize="sm">Page {currentPage} of {totalPages}</Text>
+            <Text fontSize="sm" color={textColor}>Page {currentPage} of {totalPages}</Text>
             <HStack>
-              <Text fontSize="sm">Rows</Text>
+              <Text fontSize="sm" color={textColor}>Rows</Text>
               <Select size="sm" width="80px" value={rowsPerPage}
                 onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}>
                 <option value={5}>5</option>

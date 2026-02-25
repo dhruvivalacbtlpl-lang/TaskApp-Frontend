@@ -1,13 +1,13 @@
 import {
   Box, Flex, Heading, Button, Badge, Spinner, HStack, Text,
   IconButton, Table, Thead, Tbody, Tr, Th, Td, Select,
-  Alert, AlertIcon, AlertDescription,
+  Alert, AlertIcon, AlertDescription, useColorModeValue,
 } from "@chakra-ui/react";
 import { ChevronLeftIcon, ChevronRightIcon } from "@chakra-ui/icons";
 import { MdAdd, MdEdit, MdDelete, MdSecurity } from "react-icons/md";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import api from "../api";
 import { useAuth } from "../context/AuthContext";
 
 export default function PermissionsPage() {
@@ -22,18 +22,24 @@ export default function PermissionsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(5);
 
+  const cardBg    = useColorModeValue("white", "gray.800");
+  const theadBg   = useColorModeValue("#bee3f8", "#2a4365");
+  const textColor = useColorModeValue("gray.800", "white");
+  const subColor  = useColorModeValue("gray.400", "gray.400");
+  const rowHover  = useColorModeValue("blue.50", "gray.700");
+  const thColor   = useColorModeValue("blue.700", "white");
+  const iconClr   = useColorModeValue("#2b6cb0", "#63b3ed");
+
   useEffect(() => {
     if (loading) return;
-    if (!isAdmin && !hasPermission("permissions_read")) {
-      navigate("/admin");
-    }
+    if (!isAdmin && !hasPermission("permissions_read")) navigate("/admin");
   }, [loading, user]);
 
   const fetchPermissions = async () => {
     try {
       setDataLoading(true);
-      const res = await axios.get("/permissions");
-      setPermissions(res.data || []);
+      const res = await api.get("/permissions");
+      setPermissions(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       setErrorMsg("Failed to fetch permissions. Please try again.");
     } finally {
@@ -47,7 +53,7 @@ export default function PermissionsPage() {
 
   const handleDelete = async (id) => {
     try {
-      await axios.delete(`/permissions/${id}`);
+      await api.delete(`/permissions/${id}`);
       setSuccessMsg("Permission deleted successfully.");
       setErrorMsg("");
       fetchPermissions();
@@ -57,21 +63,16 @@ export default function PermissionsPage() {
     }
   };
 
-  const startIndex = (currentPage - 1) * rowsPerPage;
+  const startIndex         = (currentPage - 1) * rowsPerPage;
   const currentPermissions = permissions.slice(startIndex, startIndex + rowsPerPage);
-  const totalPages = Math.ceil(permissions.length / rowsPerPage) || 1;
+  const totalPages         = Math.ceil(permissions.length / rowsPerPage) || 1;
 
   if (loading) {
-    return (
-      <Flex justify="center" align="center" h="60vh">
-        <Spinner size="xl" color="blue.500" />
-      </Flex>
-    );
+    return <Flex justify="center" align="center" h="60vh"><Spinner size="xl" color="blue.500" /></Flex>;
   }
 
   return (
-    <Box bg="white" p={6} borderRadius="md" boxShadow="md">
-
+    <Box bg={cardBg} p={6} borderRadius="md" boxShadow="md">
       {successMsg && (
         <Alert status="success" borderRadius="md" mb={4}>
           <AlertIcon /><AlertDescription>{successMsg}</AlertDescription>
@@ -85,8 +86,8 @@ export default function PermissionsPage() {
 
       <Flex justify="space-between" align="center" mb={5}>
         <Flex align="center" gap={2}>
-          <MdSecurity size={22} color="#2b6cb0" />
-          <Heading size="md">Permissions</Heading>
+          <MdSecurity size={22} color={iconClr} />
+          <Heading size="md" color={textColor}>Permissions</Heading>
         </Flex>
         {(isAdmin || hasPermission("permissions_create")) && (
           <Button leftIcon={<MdAdd size={18} />} colorScheme="blue"
@@ -99,7 +100,7 @@ export default function PermissionsPage() {
       {dataLoading ? (
         <Flex justify="center" py={10}><Spinner size="lg" color="blue.500" /></Flex>
       ) : permissions.length === 0 ? (
-        <Flex direction="column" align="center" py={12} color="gray.400">
+        <Flex direction="column" align="center" py={12} color={subColor}>
           <MdSecurity size={40} />
           <Text fontSize="sm" fontWeight="medium" mt={2}>No permissions found</Text>
           <Text fontSize="xs">Create your first permission to get started</Text>
@@ -107,25 +108,23 @@ export default function PermissionsPage() {
       ) : (
         <>
           <Table size="sm">
-            <Thead bg="#bee3f8">
+            <Thead bg={theadBg}>
               <Tr>
-                <Th>#</Th>
-                <Th>Name</Th>
-                <Th>Value</Th>
-                <Th>Status</Th>
+                <Th color={thColor}>#</Th>
+                <Th color={thColor}>Name</Th>
+                <Th color={thColor}>Value</Th>
+                <Th color={thColor}>Status</Th>
                 {(isAdmin || hasPermission("permissions_update") || hasPermission("permissions_delete")) && (
-                  <Th textAlign="center">Action</Th>
+                  <Th color={thColor} textAlign="center">Action</Th>
                 )}
               </Tr>
             </Thead>
             <Tbody>
               {currentPermissions.map((perm, i) => (
-                <Tr key={perm._id}
-                  _hover={{ bg: "blue.50" }}
-                  transition="background 0.15s">
-                  <Td>{startIndex + i + 1}</Td>
-                  <Td fontWeight="600">{perm.name}</Td>
-                  <Td>{perm.value}</Td>
+                <Tr key={perm._id} _hover={{ bg: rowHover }} transition="background 0.15s">
+                  <Td color={textColor}>{startIndex + i + 1}</Td>
+                  <Td color={textColor} fontWeight="600">{perm.name}</Td>
+                  <Td color={textColor}>{perm.value}</Td>
                   <Td>
                     <Badge colorScheme={perm.status === 1 ? "green" : "red"}>
                       {perm.status === 1 ? "Active" : "Inactive"}
@@ -153,9 +152,9 @@ export default function PermissionsPage() {
           </Table>
 
           <Flex mt={4} justify="space-between" align="center">
-            <Text fontSize="sm">Page {currentPage} of {totalPages}</Text>
+            <Text fontSize="sm" color={textColor}>Page {currentPage} of {totalPages}</Text>
             <HStack>
-              <Text fontSize="sm">Rows</Text>
+              <Text fontSize="sm" color={textColor}>Rows</Text>
               <Select size="sm" width="80px" value={rowsPerPage}
                 onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }}>
                 <option value={5}>5</option>

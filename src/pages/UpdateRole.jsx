@@ -1,10 +1,11 @@
 import {
   Box, Flex, Heading, Input, Select, Button, Checkbox,
   Table, Thead, Tbody, Tr, Th, Td, Alert, AlertIcon, AlertDescription,
+  useColorModeValue,
 } from "@chakra-ui/react";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import axios from "axios";
+import api from "../api";
 import { useAuth } from "../context/AuthContext";
 
 export default function UpdateRole() {
@@ -19,6 +20,11 @@ export default function UpdateRole() {
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
 
+  const cardBg    = useColorModeValue("white", "gray.800");
+  const theadBg   = useColorModeValue("#bee3f8", "#2a4365");
+  const textColor = useColorModeValue("gray.800", "white");
+  const thColor   = useColorModeValue("blue.700", "white");
+
   useEffect(() => {
     fetchPermissions();
     fetchRole();
@@ -26,9 +32,10 @@ export default function UpdateRole() {
 
   const fetchPermissions = async () => {
     try {
-      const res = await axios.get("/permissions");
+      const res = await api.get("/permissions");
+      const data = Array.isArray(res.data) ? res.data : [];
       const grouped = {};
-      res.data.forEach((p) => {
+      data.forEach((p) => {
         const [module, action] = p.value.split("_");
         const moduleKey = module.toLowerCase();
         if (!grouped[moduleKey]) grouped[moduleKey] = new Set();
@@ -44,7 +51,7 @@ export default function UpdateRole() {
 
   const fetchRole = async () => {
     try {
-      const res = await axios.get(`/role/${id}`);
+      const res = await api.get(`/role/${id}`);
       setName(res.data.name);
       setStatus(res.data.status);
       setPermissions(res.data.permissions || []);
@@ -78,7 +85,7 @@ export default function UpdateRole() {
   const handleUpdate = async () => {
     setErrorMsg(""); setSuccessMsg("");
     try {
-      await axios.put(`/role/${id}`, { name, status, permissions });
+      await api.put(`/role/${id}`, { name, status, permissions });
       await refreshProfile();
       setSuccessMsg("Role updated successfully!");
       setTimeout(() => navigate("/admin/roles"), 1500);
@@ -89,9 +96,8 @@ export default function UpdateRole() {
 
   return (
     <Box>
-      <Heading size="md" mb="4">Update Role</Heading>
+      <Heading size="md" mb="4" color={textColor}>Update Role</Heading>
 
-      {/* ✅ Messages */}
       {successMsg && (
         <Alert status="success" borderRadius="md" mb={4}>
           <AlertIcon /><AlertDescription>{successMsg}</AlertDescription>
@@ -103,14 +109,14 @@ export default function UpdateRole() {
         </Alert>
       )}
 
-      <Box bg="white" p="6" borderRadius="md" mb="6">
+      <Box bg={cardBg} p="6" borderRadius="md" mb="6">
         <Flex gap="4">
           <Box flex="1">
-            <Heading size="xs" mb="1">Name</Heading>
+            <Heading size="xs" mb="1" color={textColor}>Name</Heading>
             <Input value={name} onChange={(e) => setName(e.target.value)} />
           </Box>
           <Box w="200px">
-            <Heading size="xs" mb="1">Status</Heading>
+            <Heading size="xs" mb="1" color={textColor}>Status</Heading>
             <Select value={status} onChange={(e) => setStatus(Number(e.target.value))}>
               <option value={1}>Active</option>
               <option value={0}>Inactive</option>
@@ -119,21 +125,21 @@ export default function UpdateRole() {
         </Flex>
       </Box>
 
-      <Box bg="white" p="6" borderRadius="md">
+      <Box bg={cardBg} p="6" borderRadius="md">
         <Table size="sm">
-          <Thead>
+          <Thead bg={theadBg}>
             <Tr>
-              <Th>MODULE</Th>
-              <Th>READ</Th>
-              <Th>CREATE</Th>
-              <Th>UPDATE</Th>
-              <Th>DELETE</Th>
+              <Th color={thColor}>MODULE</Th>
+              <Th color={thColor}>READ</Th>
+              <Th color={thColor}>CREATE</Th>
+              <Th color={thColor}>UPDATE</Th>
+              <Th color={thColor}>DELETE</Th>
             </Tr>
           </Thead>
           <Tbody>
             {Object.keys(modules).map((module) => (
               <Tr key={module}>
-                <Td>{module}</Td>
+                <Td color={textColor}>{module}</Td>
                 {["read", "create", "update", "delete"].map((action) => (
                   <Td key={action}>
                     <Checkbox
