@@ -28,9 +28,7 @@ const theme = extendTheme({
       800: brand.primaryHover,
       900: brand.primaryHover,
     },
-    accent: {
-      500: brand.accent,
-    },
+    accent: { 500: brand.accent },
   },
   styles: {
     global: (props) => ({
@@ -38,6 +36,8 @@ const theme = extendTheme({
         bg: props.colorMode === "dark" ? "gray.900" : "gray.50",
         color: props.colorMode === "dark" ? "white" : "gray.800",
       },
+
+      // ── Tables ──────────────────────────────────────────
       "table": {
         color: props.colorMode === "dark" ? "white" : "gray.800",
       },
@@ -50,6 +50,8 @@ const theme = extendTheme({
           ? "#2a4365 !important"
           : `${brand.primaryLight} !important`,
       },
+
+      // ── Form elements ────────────────────────────────────
       "input, textarea, select": {
         background: props.colorMode === "dark" ? "#2d3748 !important" : "white !important",
         color: props.colorMode === "dark" ? "white !important" : "#1a202c !important",
@@ -61,6 +63,44 @@ const theme = extendTheme({
       "option": {
         background: props.colorMode === "dark" ? "#2d3748" : "white",
         color: props.colorMode === "dark" ? "white" : "#1a202c",
+      },
+
+      // ── Fix ALL gray icon/action buttons in dark mode ────
+      // This targets every gray solid button Chakra generates
+      ...(props.colorMode === "dark" ? {
+        ".chakra-icon-button, .chakra-button": {
+          "&[class*='gray']": {
+            background: "#4a5568 !important",
+            color: "white !important",
+          },
+        },
+        // Pagination, edit, delete buttons — force visible
+        ".chakra-icon-button": {
+          background: "#3d4a5c !important",
+          color: "white !important",
+          borderColor: "#4a5568 !important",
+          "&:hover": {
+            background: "#4a5568 !important",
+          },
+          // Red delete buttons — keep red
+          "&[data-colorscheme='red'], &[class*='red']": {
+            background: "#C53030 !important",
+            color: "white !important",
+            "&:hover": {
+              background: "#9B2C2C !important",
+            },
+          },
+        },
+      } : {}),
+
+      // ── Scrollbar ────────────────────────────────────────
+      "::-webkit-scrollbar": { width: "6px", height: "6px" },
+      "::-webkit-scrollbar-track": {
+        background: props.colorMode === "dark" ? "#2d3748" : "#f1f1f1",
+      },
+      "::-webkit-scrollbar-thumb": {
+        background: props.colorMode === "dark" ? "#4a5568" : "#c1c1c1",
+        borderRadius: "3px",
       },
     }),
   },
@@ -173,9 +213,59 @@ const theme = extendTheme({
         color: props.colorMode === "dark" ? "gray.300" : "gray.700",
       }),
     },
+
+    // ── Button ───────────────────────────────────────────
     Button: {
       defaultProps: { colorScheme: "brand" },
+      variants: {
+        ghost: (props) => ({
+          color: props.colorMode === "dark" ? "gray.300" : "gray.600",
+          _hover: {
+            bg: props.colorMode === "dark" ? "whiteAlpha.200" : "gray.100",
+            color: props.colorMode === "dark" ? "white" : "gray.800",
+          },
+        }),
+        outline: (props) => ({
+          borderColor: props.colorMode === "dark" ? "gray.500" : "gray.200",
+          color: props.colorMode === "dark" ? "gray.200" : "gray.700",
+          _hover: {
+            bg: props.colorMode === "dark" ? "whiteAlpha.100" : "gray.50",
+          },
+        }),
+      },
     },
+
+    // ── IconButton ───────────────────────────────────────
+    IconButton: {
+      baseStyle: (props) => ({
+        color: props.colorMode === "dark" ? "white" : "gray.700",
+      }),
+      variants: {
+        solid: (props) => ({
+          bg: props.colorMode === "dark" ? "#3d4a5c" : "gray.100",
+          color: props.colorMode === "dark" ? "white" : "gray.700",
+          _hover: {
+            bg: props.colorMode === "dark" ? "#4a5568" : "gray.200",
+          },
+        }),
+        ghost: (props) => ({
+          color: props.colorMode === "dark" ? "gray.300" : "gray.600",
+          _hover: {
+            bg: props.colorMode === "dark" ? "whiteAlpha.200" : "gray.100",
+            color: props.colorMode === "dark" ? "white" : "gray.800",
+          },
+        }),
+        outline: (props) => ({
+          color: props.colorMode === "dark" ? "gray.300" : "gray.600",
+          borderColor: props.colorMode === "dark" ? "gray.500" : "gray.200",
+          _hover: {
+            bg: props.colorMode === "dark" ? "whiteAlpha.200" : "gray.100",
+            color: props.colorMode === "dark" ? "white" : "gray.800",
+          },
+        }),
+      },
+    },
+
     Badge: {
       defaultProps: { colorScheme: "brand" },
     },
@@ -191,7 +281,23 @@ const theme = extendTheme({
         container: {
           bg: props.colorMode === "dark" ? "gray.800" : "white",
           color: props.colorMode === "dark" ? "white" : "gray.800",
+          borderColor: props.colorMode === "dark" ? "gray.700" : "gray.200",
         },
+      }),
+    },
+    Popover: {
+      baseStyle: (props) => ({
+        content: {
+          bg: props.colorMode === "dark" ? "gray.700" : "white",
+          borderColor: props.colorMode === "dark" ? "gray.600" : "gray.200",
+          color: props.colorMode === "dark" ? "white" : "gray.800",
+        },
+      }),
+    },
+    Tooltip: {
+      baseStyle: (props) => ({
+        bg: props.colorMode === "dark" ? "gray.700" : "gray.700",
+        color: "white",
       }),
     },
   },

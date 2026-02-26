@@ -14,15 +14,15 @@ import { useAuth } from "../../context/AuthContext";
 
 export default function ProjectsPage() {
   const navigate = useNavigate();
-  const { user, hasPermission, projects, projectsLoading, refreshProjects } = useAuth();
+  const { user, hasPermission, projects, projectsLoading, refreshProjects, selectProject } = useAuth();
   const isAdmin = user?.role?.name?.toLowerCase() === "admin";
 
   const canCreate = isAdmin || hasPermission("project_create");
   const canUpdate = isAdmin || hasPermission("project_update");
   const canDelete = isAdmin || hasPermission("project_delete");
 
-  const [deleteId, setDeleteId] = useState(null);
-  const [deleting, setDeleting] = useState(false);
+  const [deleteId, setDeleteId]     = useState(null);
+  const [deleting, setDeleting]     = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(5);
 
@@ -51,10 +51,16 @@ export default function ProjectsPage() {
     }
   };
 
-  const allProjects = projects;
-  const startIndex = (currentPage - 1) * rowsPerPage;
+  const handleProjectClick = (project) => {
+    // Sync the topbar dropdown to this project, then navigate to detail
+    selectProject(project._id);
+    navigate(`/admin/projects/${project._id}/detail`);
+  };
+
+  const allProjects  = projects;
+  const startIndex   = (currentPage - 1) * rowsPerPage;
   const currentProjects = allProjects.slice(startIndex, startIndex + rowsPerPage);
-  const totalPages = Math.max(1, Math.ceil(allProjects.length / rowsPerPage));
+  const totalPages   = Math.max(1, Math.ceil(allProjects.length / rowsPerPage));
 
   return (
     <Box bg={cardBg} p={6} borderRadius="md" boxShadow="md">
@@ -114,7 +120,7 @@ export default function ProjectsPage() {
                   <Td color={textColor}>{startIndex + i + 1}</Td>
                   <Td fontWeight="600" color="brand.400" cursor="pointer"
                     _hover={{ textDecoration: "underline", color: "brand.300" }}
-                    onClick={() => navigate(`/admin/projects/${project._id}/detail`)}>
+                    onClick={() => handleProjectClick(project)}>
                     {project.name}
                   </Td>
                   <Td color={subColor} fontSize="sm" maxW="200px">

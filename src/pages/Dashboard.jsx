@@ -13,7 +13,6 @@ import {
   ResponsiveContainer, BarChart, Bar, Legend,
 } from "recharts";
 
-// flexible matchers — handle any casing/spacing variation from DB
 const isPending    = (name = "") => name.toLowerCase().includes("pending");
 const isCompleted  = (name = "") => name.toLowerCase().includes("complet");
 const isInProgress = (name = "") =>
@@ -28,7 +27,7 @@ const getStatusColor = (name = "") => {
 };
 
 export default function Dashboard() {
-  const { user } = useAuth();
+  const { user, selectProject } = useAuth();
 
   const [stats, setStats] = useState({
     staff: 0, tasks: 0, pending: 0, completed: 0, inProgress: 0, projects: 0,
@@ -55,6 +54,11 @@ export default function Dashboard() {
   const chartText     = useColorModeValue("#374151",  "#e2e8f0");
   const isLight       = useColorModeValue(true, false);
 
+  // Clear selected project when landing on dashboard — it's a global view
+  useEffect(() => {
+    selectProject("");
+  }, []);
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -73,9 +77,6 @@ export default function Dashboard() {
         const pending    = tasks.filter(t => isPending(t.taskStatus?.name    || "")).length;
         const completed  = tasks.filter(t => isCompleted(t.taskStatus?.name  || "")).length;
         const inProgress = tasks.filter(t => isInProgress(t.taskStatus?.name || "")).length;
-
-        console.log("Status sample:", tasks.slice(0, 5).map(t => t.taskStatus?.name));
-        console.log({ pending, completed, inProgress });
 
         setStats({
           staff: staff.length,
@@ -157,7 +158,7 @@ export default function Dashboard() {
         </Alert>
       )}
 
-      {/* ── Welcome Banner — uses brand color from .env ── */}
+      {/* Welcome Banner */}
       <Flex
         p={6} borderRadius="xl" boxShadow="sm" mb={6}
         align="center" justify="space-between"
@@ -181,7 +182,7 @@ export default function Dashboard() {
         </VStack>
       </Flex>
 
-      {/* ── Stats Cards ── */}
+      {/* Stats Cards */}
       <SimpleGrid columns={{ base: 2, sm: 3, lg: 6 }} spacing={4} mb={6}>
         {cards.map(card => (
           <Box key={card.label}
@@ -198,7 +199,7 @@ export default function Dashboard() {
         ))}
       </SimpleGrid>
 
-      {/* ── Charts Row ── */}
+      {/* Charts Row */}
       <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={4} mb={6}>
 
         {/* Area Chart */}
@@ -269,7 +270,7 @@ export default function Dashboard() {
         </Box>
       </SimpleGrid>
 
-      {/* ── Staff Bar Chart ── */}
+      {/* Staff Bar Chart */}
       <Box bg={cardBg} p={6} borderRadius="xl" boxShadow="sm" mb={6}>
         <Heading size="sm" color={textColor} mb={1}>👤 Staff Task Breakdown</Heading>
         <Text fontSize="xs" color={mutedColor} mb={4}>Tasks per staff member by status</Text>
@@ -293,7 +294,7 @@ export default function Dashboard() {
         )}
       </Box>
 
-      {/* ── Recent Tasks ── */}
+      {/* Recent Tasks */}
       <Box bg={cardBg} p={6} borderRadius="xl" boxShadow="sm">
         <Heading size="sm" color={textColor} mb={4}>🕐 Recent Tasks</Heading>
         {recentTasks.length === 0 ? (

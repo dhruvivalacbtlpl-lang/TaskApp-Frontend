@@ -7,6 +7,7 @@ import {
   Table, Thead, Tbody, Tr, Th, Td, TableContainer,
   Grid, Tooltip, Alert, AlertIcon, AlertDescription,
   useColorModeValue, FormControl, FormErrorMessage, FormLabel,
+  HStack,
 } from "@chakra-ui/react";
 import { MdAdd, MdDelete, MdEdit, MdBugReport, MdCheckCircle } from "react-icons/md";
 import api from "../../api";
@@ -23,12 +24,10 @@ const statusColorScheme = (name = "") => {
   return "gray";
 };
 
-// For name field — no special chars at all
-const SAFE_NAME = /^[a-zA-Z0-9 .,\-_:!?()\n\r]*$/;
-// For description — same but allows @ for mentions
-const SAFE_DESC = /^[a-zA-Z0-9 .,\-_:!?()@#/\n\r]*$/;
-
-const todayStr = () => new Date().toISOString().split("T")[0];
+const SAFE_NAME  = /^[a-zA-Z0-9 .,\-_:!?()\n\r]*$/;
+const SAFE_DESC  = /^[a-zA-Z0-9 .,\-_:!?()@#/\n\r]*$/;
+const todayStr   = () => new Date().toISOString().split("T")[0];
+const PAGE_SIZES = [5, 10, 20];
 
 const empty = {
   name: "", description: "", taskStatus: "", assignee: "",
@@ -47,24 +46,36 @@ export default function IssuesPage() {
   const [saving, setSaving]       = useState(false);
   const [showProjectAlert, setShowProjectAlert] = useState(false);
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize]       = useState(5);
+
+  const [deleteId, setDeleteId]   = useState(null);
+  const [deleting, setDeleting]   = useState(false);
+
   const [mentionQuery, setMentionQuery] = useState("");
   const [mentionOpen, setMentionOpen]   = useState(false);
   const [mentionPos, setMentionPos]     = useState(0);
   const [mentions, setMentions]         = useState([]);
   const textareaRef = useRef(null);
 
-  const { isOpen, onOpen, onClose } = useDisclosure();
+  const { isOpen, onOpen, onClose }                               = useDisclosure();
+  const { isOpen: isDeleteOpen, onOpen: onDeleteOpen, onClose: onDeleteClose } = useDisclosure();
+
   const toast = useToast();
   const { user, hasPermission, selectedProject } = useAuth();
-  const isAdmin   = user?.role?.name?.toLowerCase() === "admin";
-  const canRead   = isAdmin || hasPermission("issue_read");
-  const canCreate = isAdmin || hasPermission("issue_create");
-  const canUpdate = isAdmin || hasPermission("issue_update");
-  const canDelete = isAdmin || hasPermission("issue_delete");
+  const isAdmin = user?.role?.name?.toLowerCase() === "admin";
+
+  // ── Fix: use "issues_read" to match what UpdateRole saves ──────────────────
+  // Your permissions collection has value:"issues", UpdateRole splits by "_"
+  // so it saves "issues_read", "issues_create" etc to the role
+  const canRead   = isAdmin || hasPermission("issues_read");
+  const canCreate = isAdmin || hasPermission("issues_create");
+  const canUpdate = isAdmin || hasPermission("issues_update");
+  const canDelete = isAdmin || hasPermission("issues_delete");
 
   const cardBg      = useColorModeValue("white", "gray.800");
   const theadBg     = useColorModeValue("#bee3f8", "#2a4365");
-  const theadColor  = useColorModeValue("gray.500", "white");
+  const theadColor  = useColorModeValue("gray.600", "white");
   const textColor   = useColorModeValue("gray.800", "white");
   const subColor    = useColorModeValue("gray.400", "gray.400");
   const rowEven     = useColorModeValue("white", "gray.800");
@@ -116,14 +127,15 @@ export default function IssuesPage() {
     ? issues.filter(i => i.project?._id === selectedProject._id)
     : issues;
 
-  // ── mention logic ──────────────────────────────────────────────────────────
+  const totalPages = Math.max(1, Math.ceil(filteredIssues.length / pageSize));
+  const startIndex = (currentPage - 1) * pageSize;
+  const paginated  = filteredIssues.slice(startIndex, startIndex + pageSize);
+
   const handleDescriptionChange = (e) => {
     const val = e.target.value;
-    // Block truly harmful special chars but allow @ for mentions
     if (val && !SAFE_DESC.test(val)) return;
     setForm(p => ({ ...p, description: val }));
     setErrors(p => ({ ...p, description: undefined }));
-
     const caret = e.target.selectionStart;
     const textUpToCaret = val.slice(0, caret);
     const atIdx = textUpToCaret.lastIndexOf("@");
@@ -139,9 +151,7 @@ export default function IssuesPage() {
     setMentionOpen(false);
   };
 
-  const filteredStaff = staff.filter(s =>
-    s.name.toLowerCase().includes(mentionQuery)
-  );
+  const filteredStaff = staff.filter(s => s.name.toLowerCase().includes(mentionQuery));
 
   const insertMention = (staffMember) => {
     const before  = form.description.slice(0, mentionPos);
@@ -153,32 +163,20 @@ export default function IssuesPage() {
     textareaRef.current.focus();
   };
 
-  // ── validation ─────────────────────────────────────────────────────────────
   const validate = () => {
     const e = {};
-
-    if (!form.name.trim())
-      e.name = "Issue name is required.";
-    else if (!SAFE_NAME.test(form.name))
-      e.name = "No special characters allowed.";
-
-    if (!form.description.trim())
-      e.description = "Description is required.";
-    else if (!SAFE_DESC.test(form.description))
-      e.description = "No special characters allowed.";
-
-    if (!form.assignee)
-      e.assignee = "Assignee is required.";
-
-    if (!form.dueDate)
-      e.dueDate = "Due date is required.";
-
+    if (!form.name.trim())               e.name = "Issue name is required.";
+    else if (!SAFE_NAME.test(form.name)) e.name = "No special characters allowed.";
+    if (!form.description.trim())        e.description = "Description is required.";
+    else if (!SAFE_DESC.test(form.description)) e.description = "No special characters allowed.";
+    if (!form.assignee)                  e.assignee = "Assignee is required.";
+    if (!form.dueDate)                   e.dueDate = "Due date is required.";
     return e;
   };
 
   const handleNameChange = (e) => {
     const val = e.target.value;
-    if (val && !SAFE_NAME.test(val)) return; // block special chars live
+    if (val && !SAFE_NAME.test(val)) return;
     setForm(p => ({ ...p, name: val }));
     setErrors(p => ({ ...p, name: undefined }));
   };
@@ -251,13 +249,18 @@ export default function IssuesPage() {
     }
   };
 
-  const handleDelete = async (id) => {
+  const handleDeleteConfirm = async () => {
+    setDeleting(true);
     try {
-      await api.delete(`/tasks/${id}`);
-      setIssues(prev => prev.filter(i => i._id !== id));
+      await api.delete(`/tasks/${deleteId}`);
+      setIssues(prev => prev.filter(i => i._id !== deleteId));
       toast({ title: "Issue deleted", status: "info", duration: 2000 });
+      onDeleteClose();
+      setDeleteId(null);
     } catch {
       toast({ title: "Failed to delete", status: "error", duration: 2000 });
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -265,7 +268,7 @@ export default function IssuesPage() {
 
   return (
     <Box>
-      {/* HEADER */}
+      {/* ── HEADER ── */}
       <Box bg={cardBg} p={6} borderRadius="xl" boxShadow="md" mb={4}>
         <Flex justify="space-between" align="center">
           <Flex align="center" gap={3}>
@@ -289,7 +292,6 @@ export default function IssuesPage() {
         </Flex>
       </Box>
 
-      {/* SELECT PROJECT ALERT */}
       {showProjectAlert && (
         <Alert status="warning" borderRadius="xl" mb={4}>
           <AlertIcon />
@@ -299,7 +301,6 @@ export default function IssuesPage() {
         </Alert>
       )}
 
-      {/* ZERO BUGS STATE */}
       {selectedProject && filteredIssues.length === 0 && (
         <Flex
           direction="column" align="center" justify="center" py={16}
@@ -317,7 +318,6 @@ export default function IssuesPage() {
         </Flex>
       )}
 
-      {/* EMPTY STATE */}
       {!selectedProject && issues.length === 0 && (
         <Flex direction="column" align="center" py={20} color={subColor}>
           <MdBugReport size={48} />
@@ -325,14 +325,15 @@ export default function IssuesPage() {
         </Flex>
       )}
 
-      {/* TABLE */}
+      {/* ── TABLE ── */}
       {filteredIssues.length > 0 && (
-        <Box bg={cardBg} borderRadius="xl" boxShadow="md" border={`1px solid ${borderColor}`} overflow="hidden">
+        <Box bg={cardBg} borderRadius="xl" boxShadow="md"
+          border={`1px solid ${borderColor}`} overflow="hidden">
           <TableContainer>
             <Table variant="simple" size="sm">
               <Thead bg={theadBg}>
                 <Tr>
-                  {["Issue", "Priority", "Severity", "Status", "Assignee", "Project", "Created", "Due Date",
+                  {["#", "Issue", "Priority", "Severity", "Status", "Assignee", "Project", "Created", "Due Date",
                     ...(canUpdate || canDelete ? ["Actions"] : [])].map(h => (
                     <Th key={h} color={theadColor} fontSize="xs" py={3}
                       textAlign={h === "Actions" ? "right" : "left"}>{h}</Th>
@@ -340,11 +341,12 @@ export default function IssuesPage() {
                 </Tr>
               </Thead>
               <Tbody>
-                {filteredIssues.map((issue, idx) => (
+                {paginated.map((issue, idx) => (
                   <Tr key={issue._id}
                     bg={idx % 2 === 0 ? rowEven : rowOdd}
                     _hover={{ bg: rowHover }}
                     transition="background 0.15s">
+                    <Td color={subColor} fontSize="xs">{startIndex + idx + 1}</Td>
                     <Td py={3} maxW="220px">
                       <Badge colorScheme="brand" borderRadius="full" fontSize="xs" px={2} mb={1}>bug</Badge>
                       <Text fontWeight="600" fontSize="sm" color={textColor} noOfLines={1}>{issue.name}</Text>
@@ -352,21 +354,24 @@ export default function IssuesPage() {
                     </Td>
                     <Td>
                       {issue.priority && (
-                        <Badge colorScheme={priorityColors[issue.priority]} borderRadius="full" fontSize="xs" px={2} textTransform="capitalize">
+                        <Badge colorScheme={priorityColors[issue.priority]}
+                          borderRadius="full" fontSize="xs" px={2} textTransform="capitalize">
                           {issue.priority}
                         </Badge>
                       )}
                     </Td>
                     <Td>
                       {issue.severity && (
-                        <Badge colorScheme={severityColors[issue.severity]} borderRadius="full" fontSize="xs" px={2} textTransform="capitalize">
+                        <Badge colorScheme={severityColors[issue.severity]}
+                          borderRadius="full" fontSize="xs" px={2} textTransform="capitalize">
                           {issue.severity}
                         </Badge>
                       )}
                     </Td>
                     <Td>
                       {issue.taskStatus?.name && (
-                        <Badge colorScheme={statusColorScheme(issue.taskStatus.name)} borderRadius="full" fontSize="xs" px={2}>
+                        <Badge colorScheme={statusColorScheme(issue.taskStatus.name)}
+                          borderRadius="full" fontSize="xs" px={2}>
                           {issue.taskStatus.name}
                         </Badge>
                       )}
@@ -374,7 +379,9 @@ export default function IssuesPage() {
                     <Td>
                       <Flex align="center" gap={2}>
                         <Avatar name={issue.assignee?.name} size="xs" bg="brand.500" color="white" />
-                        <Text fontSize="xs" color={textColor} whiteSpace="nowrap">{issue.assignee?.name}</Text>
+                        <Text fontSize="xs" color={textColor} whiteSpace="nowrap">
+                          {issue.assignee?.name}
+                        </Text>
                       </Flex>
                     </Td>
                     <Td>
@@ -408,7 +415,8 @@ export default function IssuesPage() {
                           {canDelete && (
                             <Tooltip label="Delete">
                               <IconButton icon={<MdDelete />} size="xs" colorScheme="red" variant="ghost"
-                                aria-label="Delete" onClick={() => handleDelete(issue._id)} />
+                                aria-label="Delete"
+                                onClick={() => { setDeleteId(issue._id); onDeleteOpen(); }} />
                             </Tooltip>
                           )}
                         </Flex>
@@ -419,10 +427,33 @@ export default function IssuesPage() {
               </Tbody>
             </Table>
           </TableContainer>
+
+          {/* ── PAGINATION ── */}
+          <Flex px={4} py={3} justify="space-between" align="center"
+            borderTop={`1px solid ${borderColor}`}>
+            <Text fontSize="sm" color={subColor}>
+              {filteredIssues.length === 0 ? "No results"
+                : `${startIndex + 1}–${Math.min(startIndex + pageSize, filteredIssues.length)} of ${filteredIssues.length}`}
+            </Text>
+            <HStack spacing={2}>
+              <Text fontSize="sm" color={textColor}>Rows</Text>
+              <Select size="sm" w="72px" value={pageSize}
+                onChange={e => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}>
+                {PAGE_SIZES.map(n => <option key={n} value={n}>{n}</option>)}
+              </Select>
+            </HStack>
+            <HStack spacing={1}>
+              <Button size="sm" onClick={() => setCurrentPage(1)} isDisabled={currentPage === 1}>«</Button>
+              <Button size="sm" onClick={() => setCurrentPage(p => p - 1)} isDisabled={currentPage === 1}>‹</Button>
+              <Text fontSize="sm" color={textColor} px={2}>{currentPage} / {totalPages}</Text>
+              <Button size="sm" onClick={() => setCurrentPage(p => p + 1)} isDisabled={currentPage === totalPages}>›</Button>
+              <Button size="sm" onClick={() => setCurrentPage(totalPages)} isDisabled={currentPage === totalPages}>»</Button>
+            </HStack>
+          </Flex>
         </Box>
       )}
 
-      {/* MODAL */}
+      {/* ── MODAL: Create / Edit ── */}
       {(canCreate || canUpdate) && (
         <Modal isOpen={isOpen} onClose={() => { onClose(); resetModal(); }} isCentered size="lg">
           <ModalOverlay />
@@ -432,22 +463,17 @@ export default function IssuesPage() {
             <ModalBody>
               {selectedProject && (
                 <Box mb={3} p={3} bg={projBlueBg} borderRadius="lg" border={`1px solid ${projBlueBdr}`}>
-                  <Text fontSize="xs" color={projBlueClr} fontWeight="600">📁 Project: {selectedProject.name}</Text>
+                  <Text fontSize="xs" color={projBlueClr} fontWeight="600">
+                    📁 Project: {selectedProject.name}
+                  </Text>
                 </Box>
               )}
               <Flex direction="column" gap={3}>
-
-                {/* Issue Name — no special chars */}
                 <FormControl isInvalid={!!errors.name}>
-                  <Input
-                    placeholder="Issue name *"
-                    value={form.name}
-                    onChange={handleNameChange}
-                  />
+                  <Input placeholder="Issue name *" value={form.name} onChange={handleNameChange} />
                   <FormErrorMessage>{errors.name}</FormErrorMessage>
                 </FormControl>
 
-                {/* Description — @ allowed for mentions, other special chars blocked */}
                 <FormControl isInvalid={!!errors.description}>
                   <FormLabel fontSize="sm" color={textColor} mb={1}>
                     Description *
@@ -473,13 +499,11 @@ export default function IssuesPage() {
                         {filteredStaff.map(s => (
                           <Flex key={s._id} px={3} py={2} align="center" gap={2}
                             cursor="pointer" _hover={{ bg: dropHover }}
-                            onMouseDown={(e) => { e.preventDefault(); insertMention(s); }}>
-                            <Box
-                              w="24px" h="24px" borderRadius="full"
+                            onMouseDown={e => { e.preventDefault(); insertMention(s); }}>
+                            <Box w="24px" h="24px" borderRadius="full"
                               bg="brand.500" color="white"
                               display="flex" alignItems="center" justifyContent="center"
-                              fontSize="10px" fontWeight="bold" flexShrink={0}
-                            >
+                              fontSize="10px" fontWeight="bold" flexShrink={0}>
                               {s.name.charAt(0).toUpperCase()}
                             </Box>
                             <Text fontSize="sm" color={textColor}>{s.name}</Text>
@@ -498,25 +522,19 @@ export default function IssuesPage() {
                   <FormErrorMessage>{errors.description}</FormErrorMessage>
                 </FormControl>
 
-                {/* Assignee */}
                 <FormControl isInvalid={!!errors.assignee}>
-                  <Select
-                    placeholder="Assignee *"
-                    value={form.assignee}
-                    onChange={e => handleFieldChange("assignee", e.target.value)}
-                  >
+                  <Select placeholder="Assignee *" value={form.assignee}
+                    onChange={e => handleFieldChange("assignee", e.target.value)}>
                     {staff.map(s => <option key={s._id} value={s._id}>{s.name}</option>)}
                   </Select>
                   <FormErrorMessage>{errors.assignee}</FormErrorMessage>
                 </FormControl>
 
-                {/* Status */}
                 <Select placeholder="Status" value={form.taskStatus}
                   onChange={e => handleFieldChange("taskStatus", e.target.value)}>
                   {statuses.map(s => <option key={s._id} value={s._id}>{s.name}</option>)}
                 </Select>
 
-                {/* Priority & Severity */}
                 <Grid templateColumns="repeat(2, 1fr)" gap={3}>
                   <Select value={form.priority} onChange={e => handleFieldChange("priority", e.target.value)}>
                     <option value="low">Low</option>
@@ -532,31 +550,19 @@ export default function IssuesPage() {
                   </Select>
                 </Grid>
 
-                {/* Created Date (read-only) & Due Date (required) */}
                 <Grid templateColumns="repeat(2, 1fr)" gap={3}>
                   <FormControl>
                     <FormLabel fontSize="xs" color={subColor} mb={1}>Created Date</FormLabel>
-                    <Input
-                      type="date"
-                      value={form.createdDate}
-                      isReadOnly
-                      bg={readOnlyBg}
-                      cursor="not-allowed"
-                      opacity={0.7}
-                    />
+                    <Input type="date" value={form.createdDate} isReadOnly
+                      bg={readOnlyBg} cursor="not-allowed" opacity={0.7} />
                   </FormControl>
                   <FormControl isInvalid={!!errors.dueDate}>
                     <FormLabel fontSize="xs" color={subColor} mb={1}>Due Date *</FormLabel>
-                    <Input
-                      type="date"
-                      value={form.dueDate}
-                      min={form.createdDate}
-                      onChange={e => handleFieldChange("dueDate", e.target.value)}
-                    />
+                    <Input type="date" value={form.dueDate} min={form.createdDate}
+                      onChange={e => handleFieldChange("dueDate", e.target.value)} />
                     <FormErrorMessage>{errors.dueDate}</FormErrorMessage>
                   </FormControl>
                 </Grid>
-
               </Flex>
             </ModalBody>
             <ModalFooter>
@@ -568,6 +574,24 @@ export default function IssuesPage() {
           </ModalContent>
         </Modal>
       )}
+
+      {/* ── MODAL: Delete ── */}
+      <Modal isOpen={isDeleteOpen} onClose={onDeleteClose} isCentered size="sm">
+        <ModalOverlay />
+        <ModalContent bg={cardBg} borderRadius="xl">
+          <ModalHeader fontSize="md" color={textColor}>Delete Issue</ModalHeader>
+          <ModalBody fontSize="sm" color={subColor}>
+            Are you sure you want to delete this issue? This action cannot be undone.
+          </ModalBody>
+          <ModalFooter gap={2}>
+            <Button size="sm" variant="ghost" onClick={onDeleteClose}>Cancel</Button>
+            <Button size="sm" colorScheme="red" isLoading={deleting}
+              loadingText="Deleting..." onClick={handleDeleteConfirm}>
+              Delete
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </Box>
   );
 }

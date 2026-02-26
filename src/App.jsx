@@ -22,9 +22,10 @@ import Dashboard from "./pages/Dashboard";
 import ProjectsPage from "./pages/project/ProjectsPage";
 import CreateProject from "./pages/project/CreateProject";
 import EditProject from "./pages/project/EditProject";
-import ProjectDetail from "./pages/project/ProjectDetail"; // ✅ NEW
-import TeamPage from "./pages/Team/TeamPage";  
-import IssuesPage from "./pages/tasks/IssuesPage";              // ✅ NEW
+import ProjectDetail from "./pages/project/ProjectDetail";
+import TeamPage from "./pages/Team/TeamPage";
+import IssuesPage from "./pages/tasks/IssuesPage";
+import DocumentsPage from "./pages/documents/DocumentsPage"; // ✅ NEW
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -72,11 +73,13 @@ function App() {
             <Route index element={<ProjectsPage />} />
             <Route path="create" element={<CreateProject />} />
             <Route path="edit/:id" element={<EditProject />} />
-            <Route path=":id/detail" element={<ProjectDetail />} /> 
+            <Route path=":id/detail" element={<ProjectDetail />} />
           </Route>
 
-          <Route path="team" element={<TeamPage />} /> 
+          <Route path="team" element={<TeamPage />} />
           <Route path="issues" element={<IssuesPage />} />
+          <Route path="documents" element={<DocumentsPage />} /> {/* ✅ NEW */}
+
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

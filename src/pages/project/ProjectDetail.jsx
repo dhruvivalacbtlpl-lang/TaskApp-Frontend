@@ -6,12 +6,15 @@ import {
 } from "@chakra-ui/react";
 import { MdFolder, MdArrowBack, MdPeople, MdCheckBox } from "react-icons/md";
 import api from "../../api";
+import { useAuth } from "../../context/AuthContext";
 
 export default function ProjectDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { selectProject } = useAuth();
+
   const [project, setProject] = useState(null);
-  const [tasks, setTasks] = useState([]);
+  const [tasks, setTasks]     = useState([]);
   const [loading, setLoading] = useState(true);
 
   const cardBg      = useColorModeValue("white", "gray.800");
@@ -30,6 +33,9 @@ export default function ProjectDetail() {
           api.get("/tasks"),
         ]);
         setProject(projectRes.data);
+        // Sync topbar dropdown to this project as soon as data loads
+        selectProject(projectRes.data._id);
+
         const projectTasks = (tasksRes.data || []).filter(
           t => t.project?._id === id || t.project === id
         );
@@ -42,6 +48,12 @@ export default function ProjectDetail() {
     };
     fetchAll();
   }, [id]);
+
+  const handleBack = () => {
+    // Reset topbar to "All Projects" when navigating back
+    selectProject("");
+    navigate("/admin/projects");
+  };
 
   if (loading) return <Flex justify="center" py={20}><Spinner size="xl" color="brand.500" /></Flex>;
   if (!project) return <Box p={6}><Text color="red.400">Project not found.</Text></Box>;
@@ -57,18 +69,17 @@ export default function ProjectDetail() {
 
   const getRoleBadgeColor = (roleName) => {
     switch (roleName?.toLowerCase()) {
-      case "admin": return "red";
-      case "manager": return "purple";
+      case "admin":     return "red";
+      case "manager":   return "purple";
       case "developer": return "brand";
-      case "designer": return "pink";
-      default: return "gray";
+      case "designer":  return "pink";
+      default:          return "gray";
     }
   };
 
   return (
     <Box px={4} py={6}>
-      <Button leftIcon={<MdArrowBack />} variant="ghost" mb={4}
-        onClick={() => navigate("/admin/projects")}>
+      <Button leftIcon={<MdArrowBack />} variant="ghost" mb={4} onClick={handleBack}>
         Back to Projects
       </Button>
 
@@ -114,9 +125,9 @@ export default function ProjectDetail() {
         ) : (
           <Grid templateColumns={{ base: "1fr", md: "repeat(2, 1fr)", lg: "repeat(3, 1fr)" }} gap={4}>
             {project.members.map((m) => {
-              const total = getMemberTaskCount(m._id);
+              const total     = getMemberTaskCount(m._id);
               const completed = getMemberCompletedCount(m._id);
-              const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+              const percent   = total > 0 ? Math.round((completed / total) * 100) : 0;
               return (
                 <GridItem key={m._id}>
                   <Box p={4} borderRadius="xl" border={`1px solid ${borderColor}`}
@@ -149,8 +160,8 @@ export default function ProjectDetail() {
                       colorScheme={percent === 100 ? "green" : "brand"}
                       borderRadius="full" />
                     <Flex mt={3} gap={2} wrap="wrap">
-                      <Badge fontSize="xs" colorScheme="brand" borderRadius="full" px={2}>{total} Total</Badge>
-                      <Badge fontSize="xs" colorScheme="green" borderRadius="full" px={2}>{completed} Done</Badge>
+                      <Badge fontSize="xs" colorScheme="brand"  borderRadius="full" px={2}>{total} Total</Badge>
+                      <Badge fontSize="xs" colorScheme="green"  borderRadius="full" px={2}>{completed} Done</Badge>
                       <Badge fontSize="xs" colorScheme="yellow" borderRadius="full" px={2}>{total - completed} Pending</Badge>
                     </Flex>
                   </Box>

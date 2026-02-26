@@ -1,27 +1,37 @@
+import { useState } from "react";
 import {
   Box, Flex, Text, Button, VStack, HStack, Select,
-  IconButton, useColorMode, useColorModeValue,
+  IconButton, useColorMode, useColorModeValue, Tooltip,
 } from "@chakra-ui/react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import NotificationBell from "../components/NotificationBell";
 import api from "../api";
 import {
   MdDashboard, MdPeople, MdVpnKey, MdSecurity,
   MdCheckBox, MdLabel, MdPerson, MdLogout, MdAssignment,
-  MdFolder, MdDarkMode, MdLightMode, MdBugReport,
+  MdFolder, MdFolderOpen, MdDarkMode, MdLightMode, MdBugReport,
+  MdKeyboardArrowDown, MdChevronLeft, MdChevronRight,
+  MdDescription,
 } from "react-icons/md";
 import { brand } from "../theme";
 
-// ─────────────────────────────────────────────
-// 🔍 Debug — remove after confirming colors work
-// ─────────────────────────────────────────────
-console.log("✅ AdminLayout using brand colors:", brand);
+const COLLAPSED_W = "64px";
+const EXPANDED_W  = "230px";
 
 function AdminLayout() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { hasPermission, user, logout, projects, selectedProject, selectProject } = useAuth();
   const { colorMode, toggleColorMode } = useColorMode();
+
+  const isProjectGroupActive = [
+    "/admin/projects", "/admin/tasks", "/admin/task-status",
+    "/admin/issues", "/admin/team", "/admin/documents"
+  ].some(p => location.pathname.startsWith(p));
+
+  const [sidebarOpen, setSidebarOpen]   = useState(true);
+  const [projectsOpen, setProjectsOpen] = useState(isProjectGroupActive);
 
   const topbarBg       = useColorModeValue("white", "gray.800");
   const topbarBorder   = useColorModeValue("#f0f0f0", "#2d3748");
@@ -29,143 +39,244 @@ function AdminLayout() {
   const selectBg       = useColorModeValue("gray.50", "gray.700");
   const selectColor    = useColorModeValue("gray.700", "white");
   const iconColor      = useColorModeValue("gray.600", "gray.300");
-  const iconHoverBg    = useColorModeValue("gray.100", "gray.700");
-  const iconHoverColor = useColorModeValue("gray.800", "white");
+  const iconHoverBg    = useColorModeValue("blue.50", "blue.900");
+  const iconHoverColor = useColorModeValue("blue.600", "blue.300");
+
+  const sidebarBg = colorMode === "dark"
+    ? `color-mix(in srgb, ${brand.sidebar} 60%, #000000 40%)`
+    : brand.sidebar;
 
   const handleLogout = async () => {
-    try {
-      await api.post("/auth/logout");
-    } catch (err) {
-      console.error("Logout error:", err);
-    } finally {
-      logout();
-      localStorage.clear();
-      navigate("/");
-    }
+    try { await api.post("/auth/logout"); }
+    catch (err) { console.error("Logout error:", err); }
+    finally { logout(); localStorage.clear(); navigate("/"); }
   };
 
-  const linkStyle = ({ isActive }) => ({
-    width: "100%",
-    padding: "10px 12px",
-    borderRadius: "6px",
-    textDecoration: "none",
-    background: isActive ? "rgba(255,255,255,0.22)" : "transparent",
-    color: "white",
-    fontWeight: "500",
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-    fontSize: "14px",
-    transition: "background 0.15s",
-  });
-
   const isAdmin = user?.role?.name?.toLowerCase() === "admin";
+
+  // ── These keys must match exactly what UpdateRole saves ──────────────────
+  // UpdateRole splits permission value by "_", so:
+  // permissions value "staff"      → saves "staff_read", "staff_create" etc
+  // permissions value "task"       → saves "task_read", "task_create" etc
+  // permissions value "taskstatus" → saves "taskstatus_read" etc
+  // permissions value "project"    → saves "project_read" etc
+  // permissions value "issues"     → saves "issues_read" etc
+  // permissions value "document"   → saves "document_read" etc
+  const canSeeProjects   = isAdmin || hasPermission("project_read");
+  const canSeeTasks      = isAdmin || hasPermission("task_read");
+  const canSeeTaskStatus = isAdmin || hasPermission("taskstatus_read");
+  const canSeeIssues     = isAdmin || hasPermission("issues_read");
+  const canSeeDocuments  = isAdmin || hasPermission("document_read");
+
+  const NavItem = ({ to, icon: Icon, label, end: endProp }) => (
+    <Tooltip
+      label={label} placement="right"
+      isDisabled={sidebarOpen}
+      hasArrow bg="gray.800" color="white" fontSize="sm"
+    >
+      <NavLink
+        to={to} end={endProp}
+        style={({ isActive }) => ({
+          display: "flex", alignItems: "center",
+          gap: "10px",
+          padding: sidebarOpen ? "9px 12px" : "9px 0px",
+          justifyContent: sidebarOpen ? "flex-start" : "center",
+          borderRadius: "7px", textDecoration: "none",
+          background: isActive ? "rgba(255,255,255,0.2)" : "transparent",
+          color: isActive ? "white" : "rgba(255,255,255,0.82)",
+          fontWeight: isActive ? "600" : "400",
+          fontSize: "14px", transition: "all 0.15s",
+          overflow: "hidden", whiteSpace: "nowrap",
+        })}
+      >
+        <Icon size={19} style={{ flexShrink: 0 }} />
+        {sidebarOpen && <span>{label}</span>}
+      </NavLink>
+    </Tooltip>
+  );
+
+  const subItems = [
+    { to: "/admin/projects",  icon: MdFolder,      label: "All Projects", end: true },
+    (isAdmin || hasPermission("project_read")) && { to: "/admin/team", icon: MdPeople, label: "Team" },
+    canSeeTasks      && { to: "/admin/tasks",        icon: MdCheckBox,    label: "Tasks" },
+    canSeeTaskStatus && { to: "/admin/task-status",  icon: MdLabel,       label: "Task Status" },
+    canSeeIssues     && { to: "/admin/issues",       icon: MdBugReport,   label: "Issues" },
+    canSeeDocuments  && { to: "/admin/documents",    icon: MdDescription, label: "Documents" },
+  ].filter(Boolean);
 
   return (
     <Flex minH="100vh">
 
-      {/* ── SIDEBAR ───────────────────────────────────────── */}
+      {/* ── SIDEBAR ── */}
       <Box
-        w="220px"
-        bg="brand.500"
+        w={sidebarOpen ? EXPANDED_W : COLLAPSED_W}
+        bg={sidebarBg}
         color="white"
-        p="5"
+        py="5"
+        px={sidebarOpen ? "3" : "1"}
         flexShrink={0}
-        boxShadow="2px 0 8px rgba(0,0,0,0.15)"
+        boxShadow="2px 0 12px rgba(0,0,0,0.2)"
         display="flex"
         flexDirection="column"
+        transition="width 0.25s ease, padding 0.25s ease"
+        overflow="hidden"
       >
-        {/* Logo */}
-        <Flex align="center" gap="2" mb="8">
-          <MdAssignment size={24} />
-          <Text fontSize="xl" fontWeight="bold">Task Manager</Text>
+        {/* Logo + Toggle */}
+        <Flex align="center" justify={sidebarOpen ? "space-between" : "center"} mb="8" px="2">
+          {sidebarOpen && (
+            <Flex align="center" gap="2">
+              <MdAssignment size={22} />
+              <Text fontSize="lg" fontWeight="bold" letterSpacing="tight" whiteSpace="nowrap">
+                Task Manager
+              </Text>
+            </Flex>
+          )}
+          <Box
+            as="button"
+            onClick={() => setSidebarOpen(v => !v)}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "center",
+              width: "26px", height: "26px", borderRadius: "50%",
+              background: "rgba(255,255,255,0.15)",
+              border: "1px solid rgba(255,255,255,0.25)",
+              cursor: "pointer", color: "white", flexShrink: 0,
+              transition: "background 0.15s",
+            }}
+            title={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+          >
+            {sidebarOpen ? <MdChevronLeft size={16} /> : <MdChevronRight size={16} />}
+          </Box>
         </Flex>
 
-        {/* Nav Links */}
-        <VStack align="stretch" spacing="1">
-          <NavLink to="/admin" end style={linkStyle}>
-            <MdDashboard size={18} /> Dashboard
-          </NavLink>
+        {/* Nav links */}
+        <VStack align="stretch" spacing="1" overflowY="auto" overflowX="hidden">
 
-          {(isAdmin || hasPermission("Staff_read")) && (
-            <NavLink to="/admin/staff" style={linkStyle}>
-              <MdPeople size={18} /> Staff
-            </NavLink>
-          )}
+          <NavItem to="/admin" icon={MdDashboard} label="Dashboard" end />
 
-          {(isAdmin || hasPermission("project_read")) && (
-            <NavLink to="/admin/projects" style={linkStyle}>
-              <MdFolder size={18} /> Projects
-            </NavLink>
-          )}
-
-          {(isAdmin || hasPermission("project_read")) && (
-            <NavLink to="/admin/team" style={linkStyle}>
-              <MdPeople size={18} /> Team
-            </NavLink>
+          {(isAdmin || hasPermission("staff_read")) && (
+            <NavItem to="/admin/staff" icon={MdPeople} label="Staff" />
           )}
 
           {(isAdmin || hasPermission("role_read")) && (
-            <NavLink to="/admin/roles" style={linkStyle}>
-              <MdVpnKey size={18} /> Roles
-            </NavLink>
+            <NavItem to="/admin/roles" icon={MdVpnKey} label="Roles" />
           )}
 
           {(isAdmin || hasPermission("permissions_read")) && (
-            <NavLink to="/admin/permissions" style={linkStyle}>
-              <MdSecurity size={18} /> Permissions
-            </NavLink>
+            <NavItem to="/admin/permissions" icon={MdSecurity} label="Permissions" />
           )}
 
-          {(isAdmin || hasPermission("task_read")) && (
-            <NavLink to="/admin/tasks" style={linkStyle}>
-              <MdCheckBox size={18} /> Tasks
-            </NavLink>
+          {/* ── Projects accordion ── */}
+          {canSeeProjects && (
+            <Box>
+              <Tooltip
+                label="Projects" placement="right"
+                isDisabled={sidebarOpen}
+                hasArrow bg="gray.800" color="white" fontSize="sm"
+              >
+                <Box
+                  as="button"
+                  w="100%"
+                  onClick={() => {
+                    if (!sidebarOpen) setSidebarOpen(true);
+                    setProjectsOpen(v => !v);
+                  }}
+                  style={{
+                    display: "flex", alignItems: "center",
+                    gap: "10px",
+                    padding: sidebarOpen ? "9px 12px" : "9px 0px",
+                    justifyContent: sidebarOpen ? "flex-start" : "center",
+                    borderRadius: "7px", cursor: "pointer",
+                    background: isProjectGroupActive ? "rgba(255,255,255,0.2)" : "transparent",
+                    color: isProjectGroupActive ? "white" : "rgba(255,255,255,0.82)",
+                    fontWeight: isProjectGroupActive ? "600" : "400",
+                    fontSize: "14px", transition: "all 0.15s",
+                    border: "none", width: "100%", textAlign: "left",
+                    overflow: "hidden", whiteSpace: "nowrap",
+                  }}
+                >
+                  {projectsOpen && sidebarOpen
+                    ? <MdFolderOpen size={19} style={{ flexShrink: 0 }} />
+                    : <MdFolder size={19} style={{ flexShrink: 0 }} />
+                  }
+                  {sidebarOpen && (
+                    <>
+                      <Text flex={1} fontSize="14px">Projects</Text>
+                      <Box style={{
+                        transform: projectsOpen ? "rotate(0deg)" : "rotate(-90deg)",
+                        transition: "transform 0.2s ease",
+                        display: "flex", flexShrink: 0,
+                      }}>
+                        <MdKeyboardArrowDown size={18} />
+                      </Box>
+                    </>
+                  )}
+                </Box>
+              </Tooltip>
+
+              {/* Sub-items */}
+              {sidebarOpen && (
+                <Box
+                  overflow="hidden"
+                  maxH={projectsOpen ? "400px" : "0px"}
+                  opacity={projectsOpen ? 1 : 0}
+                  transition="max-height 0.25s ease, opacity 0.2s ease"
+                >
+                  <Flex mt="1" ml="3">
+                    <Box
+                      w="2px" mx="2" borderRadius="full" flexShrink={0}
+                      style={{ background: "rgba(255,255,255,0.25)" }}
+                    />
+                    <VStack align="stretch" spacing="0.5" flex={1} py="1">
+                      {subItems.map(({ to, icon: Icon, label, end: endProp }) => (
+                        <NavLink
+                          key={to}
+                          to={to}
+                          end={endProp}
+                          style={({ isActive }) => ({
+                            display: "flex", alignItems: "center", gap: "8px",
+                            padding: "7px 10px", borderRadius: "6px",
+                            textDecoration: "none",
+                            background: isActive ? "rgba(255,255,255,0.18)" : "transparent",
+                            color: isActive ? "white" : "rgba(255,255,255,0.7)",
+                            fontWeight: isActive ? "600" : "400",
+                            fontSize: "13px", transition: "all 0.15s",
+                          })}
+                        >
+                          <Icon size={14} style={{ flexShrink: 0 }} />
+                          {label}
+                        </NavLink>
+                      ))}
+                    </VStack>
+                  </Flex>
+                </Box>
+              )}
+            </Box>
           )}
 
-          {(isAdmin || hasPermission("taskstatus_read")) && (
-            <NavLink to="/admin/task-status" style={linkStyle}>
-              <MdLabel size={18} /> Task Status
-            </NavLink>
-          )}
-
-          {(isAdmin || hasPermission("issue_read")) && (
-            <NavLink to="/admin/issues" style={linkStyle}>
-              <MdBugReport size={18} /> Issues
-            </NavLink>
-          )}
         </VStack>
       </Box>
 
-      {/* ── MAIN ──────────────────────────────────────────── */}
+      {/* ── MAIN ── */}
       <Flex flex="1" direction="column" bg={contentBg} minW={0}>
 
         {/* TOPBAR */}
         <Flex
-          h="64px"
-          bg={topbarBg}
-          px={6}
-          align="center"
+          h="64px" bg={topbarBg} px={6} align="center"
           justify="space-between"
           boxShadow="0 1px 3px rgba(0,0,0,0.08)"
           borderBottom={`1px solid ${topbarBorder}`}
           flexShrink={0}
         >
-          {/* LEFT — project selector */}
           <Flex align="center" gap={2}>
             {projects.length > 0 && (
               <>
-                <MdFolder size={16} color="brand.500" />
+                <MdFolder size={16} color={brand.primary} />
                 <Select
-                  size="sm"
-                  w="160px"
+                  size="sm" w="160px"
                   value={selectedProject?._id || ""}
                   onChange={(e) => selectProject(e.target.value)}
-                  borderRadius="lg"
-                  borderColor="gray.200"
-                  bg={selectBg}
-                  fontSize="sm"
-                  fontWeight="500"
+                  borderRadius="lg" borderColor="gray.200"
+                  bg={selectBg} fontSize="sm" fontWeight="500"
                   color={selectColor}
                   _focus={{ borderColor: brand.primary, bg: topbarBg }}
                   _hover={{ borderColor: "gray.300" }}
@@ -179,44 +290,30 @@ function AdminLayout() {
             )}
           </Flex>
 
-          {/* RIGHT */}
           <HStack spacing={2}>
             <NotificationBell />
-
             <IconButton
-              size="sm"
-              variant="ghost"
+              size="sm" variant="ghost"
               icon={colorMode === "light" ? <MdDarkMode size={18} /> : <MdLightMode size={18} />}
-              onClick={toggleColorMode}
-              aria-label="Toggle dark mode"
-              color={iconColor}
-              _hover={{ bg: iconHoverBg, color: iconHoverColor }}
+              onClick={toggleColorMode} aria-label="Toggle dark mode"
+              color={iconColor} _hover={{ bg: iconHoverBg, color: iconHoverColor }}
             />
-
             <Button
-              size="sm"
-              variant="ghost"
-              leftIcon={<MdPerson size={16} />}
-              color={iconColor}
-              _hover={{ bg: iconHoverBg, color: iconHoverColor }}
+              size="sm" variant="ghost" leftIcon={<MdPerson size={16} />}
+              color={iconColor} _hover={{ bg: iconHoverBg, color: iconHoverColor }}
               onClick={() => navigate("/admin/profile")}
             >
               Profile
             </Button>
-
             <Button
-              size="sm"
-              colorScheme="red"
-              variant="outline"
-              leftIcon={<MdLogout size={16} />}
-              onClick={handleLogout}
+              size="sm" colorScheme="red" variant="outline"
+              leftIcon={<MdLogout size={16} />} onClick={handleLogout}
             >
               Logout
             </Button>
           </HStack>
         </Flex>
 
-        {/* PAGE CONTENT */}
         <Box p="6" flex="1" overflowY="auto">
           <Outlet />
         </Box>
