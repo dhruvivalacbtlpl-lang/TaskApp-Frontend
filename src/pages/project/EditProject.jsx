@@ -64,7 +64,7 @@ export default function EditProject() {
     }
   };
 
-  if (loading) return <Flex justify="center" py={12}><Spinner size="lg" color="blue.500" /></Flex>;
+  if (loading) return <Flex justify="center" py={12}><Spinner size="lg" color="brand.500" /></Flex>;
 
   return (
     <Box maxW="lg" bg={cardBg} p={6} borderRadius="md" boxShadow="sm">
@@ -110,7 +110,7 @@ export default function EditProject() {
 
         <HStack justify="flex-end" gap={3}>
           <Button variant="outline" onClick={() => navigate("/admin/projects")}>Cancel</Button>
-          <Button colorScheme="blue" type="submit" isLoading={saving}>Update</Button>
+          <Button colorScheme="brand" type="submit" isLoading={saving}>Update</Button>
         </HStack>
       </form>
     </Box>

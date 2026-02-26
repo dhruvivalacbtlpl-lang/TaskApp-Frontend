@@ -67,7 +67,7 @@ function CreateTaskStatus() {
               <option value="INACTIVE">Inactive</option>
             </Select>
           </FormControl>
-          <Button type="submit" colorScheme="blue" isLoading={loading}>
+          <Button type="submit" colorScheme="brand" isLoading={loading}>
             Create Status
           </Button>
         </VStack>

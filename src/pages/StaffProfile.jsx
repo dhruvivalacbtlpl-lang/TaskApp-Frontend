@@ -56,7 +56,7 @@ function StaffProfile() {
     <Box bg="gray.50" minH="100vh" p={8}>
       {/* Back to Dashboard */}
       <Flex mb={6}>
-        <Button colorScheme="blue" onClick={() => navigate("/staff/dashboard")}>
+        <Button colorScheme="brand" onClick={() => navigate("/staff/dashboard")}>
           &larr; Back to Dashboard
         </Button>
       </Flex>
@@ -66,7 +66,7 @@ function StaffProfile() {
           name={staff.name}
           size="xl"
           mb={3}
-          bg="blue.400"
+          bg="brand.500"
           color="white"
         />
         <Heading size="md">{staff.name}</Heading>

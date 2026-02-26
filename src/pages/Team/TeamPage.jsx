@@ -31,13 +31,13 @@ export default function TeamPage() {
   const textColor        = useColorModeValue("gray.700", "white");
   const subColor         = useColorModeValue("gray.400", "gray.400");
   const borderColor      = useColorModeValue("#e2e8f0", "gray.600");
-  const hoverBg          = useColorModeValue("blue.50", "gray.700");
-  const hoverBorderColor = useColorModeValue("blue.200", "blue.400");
+  const hoverBg          = useColorModeValue("brand.50", "gray.700");
+  const hoverBorderColor = useColorModeValue("brand.200", "brand.400");
   const dropdownBg       = useColorModeValue("white", "gray.700");
   const dropdownBorderColor = useColorModeValue("#e2e8f0", "gray.600");
-  const chipBg           = useColorModeValue("blue.50", "blue.900");
-  const chipBorderColor  = useColorModeValue("blue.200", "blue.500");
-  const chipTextColor    = useColorModeValue("blue.700", "blue.200");
+  const chipBg           = useColorModeValue("brand.50", "brand.900");
+  const chipBorderColor  = useColorModeValue("brand.200", "brand.500");
+  const chipTextColor    = useColorModeValue("brand.700", "brand.200");
   const iconClr          = useColorModeValue("#2b6cb0", "#63b3ed");
 
   useEffect(() => {
@@ -172,7 +172,7 @@ export default function TeamPage() {
         border="1px solid" borderColor={borderColor}
         _hover={{ bg: hoverBg, borderColor: hoverBorderColor, boxShadow: "sm" }}
         transition="all 0.2s">
-        <Avatar name={m.name} size="md" bg="blue.400" color="white" />
+        <Avatar name={m.name} size="md" bg="brand.500" color="white" />
         <Box flex={1}>
           <Text fontWeight="600" fontSize="sm" color={textColor}>{m.name}</Text>
           <Text fontSize="xs" color={subColor} noOfLines={1}>{m.email}</Text>
@@ -182,7 +182,7 @@ export default function TeamPage() {
             </Badge>
           )}
           {allProjectsView && (
-            <Badge fontSize="xs" colorScheme="blue" borderRadius="full" mt={1} ml={1}>
+            <Badge fontSize="xs" colorScheme="brand" borderRadius="full" mt={1} ml={1}>
               {project.name}
             </Badge>
           )}
@@ -200,37 +200,37 @@ export default function TeamPage() {
   );
 
   if (projectsLoading) {
-    return <Flex justify="center" py={20}><Spinner size="xl" color="blue.500" /></Flex>;
+    return <Flex justify="center" py={20}><Spinner size="xl" color="brand.500" /></Flex>;
   }
 
   return (
     <Box>
       {/* BANNER */}
       {localSelected ? (
-        <Box bg="blue.600" p={5} borderRadius="xl" boxShadow="md" mb={6} color="white">
+        <Box bg="brand.500" p={5} borderRadius="xl" boxShadow="md" mb={6} color="white">
           <Flex justify="space-between" align="center">
             <Box>
-              <Text fontSize="xs" color="blue.200" fontWeight="600" textTransform="uppercase">Selected Project</Text>
+              <Text fontSize="xs" color="brand.200" fontWeight="600" textTransform="uppercase">Selected Project</Text>
               <Heading size="md" mt={1}>{localSelected.name}</Heading>
-              <Text fontSize="sm" color="blue.100" mt={1}>{localSelected.description || "No description"}</Text>
+              <Text fontSize="sm" color="brand.100" mt={1}>{localSelected.description || "No description"}</Text>
             </Box>
             <Box textAlign="center">
               <Text fontSize="3xl" fontWeight="bold">{localSelected.members?.length || 0}</Text>
-              <Text fontSize="xs" color="blue.200">Members</Text>
+              <Text fontSize="xs" color="brand.200">Members</Text>
             </Box>
           </Flex>
         </Box>
       ) : (
-        <Box bg="blue.600" p={5} borderRadius="xl" boxShadow="md" mb={6} color="white">
+      <Box bg="brand.500" p={5} borderRadius="xl" boxShadow="md" mb={6} color="white">
           <Flex justify="space-between" align="center">
             <Box>
-              <Text fontSize="xs" color="blue.200" fontWeight="600" textTransform="uppercase">Viewing</Text>
+              <Text fontSize="xs" color="brand.200" fontWeight="600" textTransform="uppercase">Viewing</Text>
               <Heading size="md" mt={1}>All Projects</Heading>
-              <Text fontSize="sm" color="blue.100" mt={1}>Members across all {projects.length} projects</Text>
+              <Text fontSize="sm" color="brand.100" mt={1}>Members across all {projects.length} projects</Text>
             </Box>
             <Box textAlign="center">
               <Text fontSize="3xl" fontWeight="bold">{projects.length}</Text>
-              <Text fontSize="xs" color="blue.200">Projects</Text>
+              <Text fontSize="xs" color="brand.200">Projects</Text>
             </Box>
           </Flex>
         </Box>
@@ -243,9 +243,9 @@ export default function TeamPage() {
             <Flex align="center" gap={2}>
               <MdPeople size={20} color={iconClr} />
               <Heading size="sm" color={textColor}>{localSelected.name} — Team Members</Heading>
-              <Badge colorScheme="blue" borderRadius="full" px={2}>{localSelected.members?.length || 0}</Badge>
+              <Badge colorScheme="brand" borderRadius="full" px={2}>{localSelected.members?.length || 0}</Badge>
             </Flex>
-            <Button leftIcon={<MdAdd />} colorScheme="blue" size="sm" onClick={onAddOpen}>
+            <Button leftIcon={<MdAdd />} colorScheme="brand" size="sm" onClick={onAddOpen}>
               Add Member
             </Button>
           </Flex>
@@ -269,9 +269,9 @@ export default function TeamPage() {
             <Flex align="center" gap={2}>
               <MdFolder size={20} color={iconClr} />
               <Heading size="sm" color={textColor}>{project.name}</Heading>
-              <Badge colorScheme="blue" borderRadius="full" px={2}>{project.members?.length || 0}</Badge>
+              <Badge colorScheme="brand" borderRadius="full" px={2}>{project.members?.length || 0}</Badge>
             </Flex>
-            <Button leftIcon={<MdAdd />} colorScheme="blue" size="sm"
+            <Button leftIcon={<MdAdd />} colorScheme="brand" size="sm"
               onClick={() => { setLocalSelected(project); onAddOpen(); }}>
               Add Member
             </Button>
@@ -302,13 +302,13 @@ export default function TeamPage() {
                   <Flex key={u._id} align="center" gap={1}
                     bg={chipBg} border="1px solid" borderColor={chipBorderColor}
                     borderRadius="full" px={3} py={1}>
-                    <Avatar name={u.name} size="2xs" bg="blue.400" color="white" />
+                    <Avatar name={u.name} size="2xs" bg="brand.500" color="white" />
                     <Text fontSize="xs" fontWeight="600" color={chipTextColor}>{u.name}</Text>
                     <IconButton
                       icon={<MdClose />}
                       size="xs"
                       variant="ghost"
-                      colorScheme="blue"
+                      colorScheme="brand"
                       aria-label="Remove"
                       minW="auto" h="auto" p="1px"
                       onClick={() => handleRemoveChip(u._id)}
@@ -338,7 +338,7 @@ export default function TeamPage() {
                     <Flex key={u._id} align="center" gap={3} px={3} py={2}
                       cursor="pointer" _hover={{ bg: hoverBg }}
                       onClick={() => handleSelectUser(u)}>
-                      <Avatar name={u.name} size="sm" bg="blue.400" color="white" />
+                      <Avatar name={u.name} size="sm" bg="brand.500" color="white" />
                       <Box>
                         <Text fontSize="sm" fontWeight="600" color={textColor}>{u.name}</Text>
                         <Text fontSize="xs" color={subColor}>{u.email}</Text>
@@ -367,7 +367,7 @@ export default function TeamPage() {
           </ModalBody>
           <ModalFooter>
             <Button variant="ghost" mr={3} onClick={() => { onAddClose(); resetAddModal(); }}>Cancel</Button>
-            <Button colorScheme="blue" isLoading={saving}
+            <Button colorScheme="brand" isLoading={saving}
               isDisabled={selectedUsers.length === 0}
               onClick={handleAddMembers}>
               Add {selectedUsers.length > 0 ? `(${selectedUsers.length})` : ""} Member{selectedUsers.length > 1 ? "s" : ""}

@@ -36,10 +36,10 @@ export default function StaffPage() {
 
   const cardBg      = useColorModeValue("white", "gray.800");
   const theadBg     = useColorModeValue("#bee3f8", "#2a4365");
-  const theadColor  = useColorModeValue("blue.700", "white");
+  const theadColor  = useColorModeValue("brand.700", "white");
   const rowEven     = useColorModeValue("white", "gray.800");
   const rowOdd      = useColorModeValue("gray.50", "gray.750");
-  const rowHover    = useColorModeValue("blue.50", "gray.700");
+  const rowHover    = useColorModeValue("brand.50", "gray.700");
   const borderColor = useColorModeValue("#e5e7eb", "#4a5568");
   const textColor   = useColorModeValue("gray.800", "white");
   const subColor    = useColorModeValue("gray.400", "gray.400");
@@ -142,7 +142,7 @@ export default function StaffPage() {
           <Heading size="md" color={textColor}>Staff</Heading>
         </Flex>
         {canCreate && (
-          <Button colorScheme="blue" leftIcon={<MdPersonAdd size={18} />}
+          <Button colorScheme="brand" leftIcon={<MdPersonAdd size={18} />}
             onClick={() => navigate("/admin/staff/create")}>
             Add User
           </Button>
@@ -170,7 +170,7 @@ export default function StaffPage() {
       {/* CONTENT */}
       {loading ? (
         <Flex justify="center" py={10}>
-          <Spinner size="lg" color="blue.500" />
+          <Spinner size="lg" color="brand.500" />
         </Flex>
       ) : filteredStaffs.length === 0 ? (
         <Flex direction="column" align="center" py={12} color={subColor}>
@@ -221,7 +221,7 @@ export default function StaffPage() {
                       </Text>
                     </Td>
                     <Td>
-                      <Badge colorScheme="blue" borderRadius="full" px={2}>
+                      <Badge colorScheme="brand" borderRadius="full" px={2}>
                         {staff.role?.name || "N/A"}
                       </Badge>
                     </Td>
@@ -287,7 +287,7 @@ export default function StaffPage() {
               {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
                 <Button
                   key={p} size="sm"
-                  colorScheme={p === currentPage ? "blue" : "gray"}
+                  colorScheme={p === currentPage ? "brand" : "gray"}
                   variant={p === currentPage ? "solid" : "outline"}
                   onClick={() => setCurrentPage(p)}
                 >

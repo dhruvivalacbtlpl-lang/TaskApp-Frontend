@@ -50,11 +50,11 @@ export default function EditTask() {
   const subColor    = useColorModeValue("gray.400", "gray.500");
   const dropdownBg  = useColorModeValue("white", "gray.700");
   const dropBorder  = useColorModeValue("#e2e8f0", "#4a5568");
-  const dropHover   = useColorModeValue("blue.50", "gray.600");
+  const dropHover   = useColorModeValue("brand.50", "gray.600");
   const mediaBorder = useColorModeValue("#ccc", "#4a5568");
-  const projBlueBg  = useColorModeValue("blue.50", "blue.900");
+  const projBlueBg  = useColorModeValue("brand.50", "brand.900");
   const projBlueBdr = useColorModeValue("#bee3f8", "#2a4365");
-  const projBlueClr = useColorModeValue("blue.600", "blue.200");
+  const projBlueClr = useColorModeValue("brand.600", "brand.200");
   const projOrgBg   = useColorModeValue("orange.50", "orange.900");
   const projOrgBdr  = useColorModeValue("#fbd38d", "#744210");
   const projOrgClr  = useColorModeValue("orange.600", "orange.200");
@@ -136,7 +136,7 @@ export default function EditTask() {
     }
   };
 
-  if (loading) return <Flex justify="center" py={10}><Spinner size="lg" color="blue.500" /></Flex>;
+  if (loading) return <Flex justify="center" py={10}><Spinner size="lg" color="brand.500" /></Flex>;
 
   const displayList = existingMedia
     .map((m) => ({ url: resolveMediaUrl(m), isVideo: isVideoFile(m) }))
@@ -197,7 +197,7 @@ export default function EditTask() {
                   <Flex key={s._id} px={3} py={2} align="center" gap={2} cursor="pointer"
                     _hover={{ bg: dropHover }}
                     onMouseDown={(e) => { e.preventDefault(); insertMention(s); }}>
-                    <Box w="24px" h="24px" borderRadius="full" bg="blue.400" color="white"
+                    <Box w="24px" h="24px" borderRadius="full" bg="brand.500" color="white"
                       display="flex" alignItems="center" justifyContent="center"
                       fontSize="10px" fontWeight="bold" flexShrink={0}>
                       {s.name.charAt(0).toUpperCase()}
@@ -211,7 +211,7 @@ export default function EditTask() {
           {mentions.length > 0 && (
             <Flex gap={2} mt={2} wrap="wrap">
               {mentions.map(m => (
-                <Badge key={m} colorScheme="blue" borderRadius="full" px={2} fontSize="xs">@{m}</Badge>
+                <Badge key={m} colorScheme="brand" borderRadius="full" px={2} fontSize="xs">@{m}</Badge>
               ))}
             </Flex>
           )}
@@ -261,7 +261,7 @@ export default function EditTask() {
           </Box>
         )}
 
-        <Button colorScheme="blue" type="submit" width="100%" isLoading={submitting}>
+        <Button colorScheme="brand" type="submit" width="100%" isLoading={submitting}>
           Update Task
         </Button>
       </form>

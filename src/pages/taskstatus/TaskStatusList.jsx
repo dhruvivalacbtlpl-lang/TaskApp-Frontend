@@ -28,8 +28,8 @@ export default function TaskStatusList() {
   const theadBg   = useColorModeValue("#bee3f8", "#2a4365");
   const textColor = useColorModeValue("gray.800", "white");
   const subColor  = useColorModeValue("gray.400", "gray.400");
-  const rowHover  = useColorModeValue("blue.50", "gray.700");
-  const thColor   = useColorModeValue("blue.700", "white");
+  const rowHover  = useColorModeValue("brand.50", "gray.700");
+  const thColor   = useColorModeValue("brand.700", "white");
   const iconClr   = useColorModeValue("#2b6cb0", "#63b3ed");
 
   const showMsg = (type, msg) => {
@@ -98,7 +98,7 @@ export default function TaskStatusList() {
           <Heading size="md" color={textColor}>Task Status</Heading>
         </Flex>
         {canCreate && (
-          <Button leftIcon={<MdAdd size={18} />} colorScheme="blue"
+          <Button leftIcon={<MdAdd size={18} />} colorScheme="brand"
             onClick={() => navigate("/admin/task-status/create")}>
             New Status
           </Button>
@@ -107,7 +107,7 @@ export default function TaskStatusList() {
 
       {loading ? (
         <Flex justify="center" py={10}>
-          <Spinner size="lg" color="blue.500" />
+          <Spinner size="lg" color="brand.500" />
         </Flex>
       ) : statuses.length === 0 ? (
         <Flex direction="column" align="center" py={12} color={subColor}>

@@ -88,7 +88,7 @@ export default function CreateProject() {
 
         <HStack justify="flex-end" gap={3}>
           <Button variant="outline" onClick={() => navigate("/admin/projects")}>Cancel</Button>
-          <Button colorScheme="blue" type="submit" isLoading={loading}>Create</Button>
+          <Button colorScheme="brand" type="submit" isLoading={loading}>Create</Button>
         </HStack>
       </form>
     </Box>

@@ -18,8 +18,8 @@ export default function ProjectDetail() {
   const textColor   = useColorModeValue("gray.800", "white");
   const subColor    = useColorModeValue("gray.500", "gray.400");
   const borderColor = useColorModeValue("#e2e8f0", "#4a5568");
-  const cardHover   = useColorModeValue("blue.50", "gray.700");
-  const iconBg      = useColorModeValue("blue.100", "blue.900");
+  const cardHover   = useColorModeValue("brand.50", "gray.700");
+  const iconBg      = useColorModeValue("brand.100", "brand.900");
   const iconClr     = useColorModeValue("#2b6cb0", "#63b3ed");
 
   useEffect(() => {
@@ -43,7 +43,7 @@ export default function ProjectDetail() {
     fetchAll();
   }, [id]);
 
-  if (loading) return <Flex justify="center" py={20}><Spinner size="xl" color="blue.500" /></Flex>;
+  if (loading) return <Flex justify="center" py={20}><Spinner size="xl" color="brand.500" /></Flex>;
   if (!project) return <Box p={6}><Text color="red.400">Project not found.</Text></Box>;
 
   const getMemberTaskCount = (memberId) =>
@@ -59,7 +59,7 @@ export default function ProjectDetail() {
     switch (roleName?.toLowerCase()) {
       case "admin": return "red";
       case "manager": return "purple";
-      case "developer": return "blue";
+      case "developer": return "brand";
       case "designer": return "pink";
       default: return "gray";
     }
@@ -100,7 +100,7 @@ export default function ProjectDetail() {
         <Flex align="center" gap={2} mb={6}>
           <MdPeople size={22} color={iconClr} />
           <Heading size="sm" color={textColor}>Team Members</Heading>
-          <Badge colorScheme="blue" borderRadius="full" px={2}>
+          <Badge colorScheme="brand" borderRadius="full" px={2}>
             {project.members?.length || 0}
           </Badge>
         </Flex>
@@ -120,10 +120,10 @@ export default function ProjectDetail() {
               return (
                 <GridItem key={m._id}>
                   <Box p={4} borderRadius="xl" border={`1px solid ${borderColor}`}
-                    _hover={{ bg: cardHover, borderColor: "blue.300", transform: "translateY(-3px)", boxShadow: "md" }}
+                    _hover={{ bg: cardHover, borderColor: "brand.300", transform: "translateY(-3px)", boxShadow: "md" }}
                     transition="all 0.2s">
                     <Flex align="center" gap={3} mb={3}>
-                      <Avatar name={m.name} size="md" bg="blue.400" color="white" />
+                      <Avatar name={m.name} size="md" bg="brand.500" color="white" />
                       <Box flex={1}>
                         <Flex align="center" gap={2}>
                           <Text fontWeight="700" fontSize="sm" color={textColor}>{m.name}</Text>
@@ -141,15 +141,15 @@ export default function ProjectDetail() {
                         <Text fontSize="xs" color={subColor}>{completed}/{total} tasks</Text>
                       </Flex>
                       <Text fontSize="xs" fontWeight="600"
-                        color={percent === 100 ? "green.500" : "blue.400"}>
+                        color={percent === 100 ? "green.500" : "brand.400"}>
                         {percent}%
                       </Text>
                     </Flex>
                     <Progress value={percent} size="xs"
-                      colorScheme={percent === 100 ? "green" : "blue"}
+                      colorScheme={percent === 100 ? "green" : "brand"}
                       borderRadius="full" />
                     <Flex mt={3} gap={2} wrap="wrap">
-                      <Badge fontSize="xs" colorScheme="blue" borderRadius="full" px={2}>{total} Total</Badge>
+                      <Badge fontSize="xs" colorScheme="brand" borderRadius="full" px={2}>{total} Total</Badge>
                       <Badge fontSize="xs" colorScheme="green" borderRadius="full" px={2}>{completed} Done</Badge>
                       <Badge fontSize="xs" colorScheme="yellow" borderRadius="full" px={2}>{total - completed} Pending</Badge>
                     </Flex>

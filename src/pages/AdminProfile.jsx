@@ -60,7 +60,7 @@ function AdminProfile() {
   if (loading) {
     return (
       <Flex justify="center" align="center" h="60vh">
-        <Spinner size="xl" color="blue.500" />
+        <Spinner size="xl" color="brand.500" />
       </Flex>
     );
   }
@@ -69,7 +69,7 @@ function AdminProfile() {
     <Box>
       {/* Back Button */}
       <Button
-        mb={6} colorScheme="blue" variant="outline" size="sm"
+        mb={6} colorScheme="brand" variant="outline" size="sm"
         leftIcon={<MdArrowBack size={16} />}
         onClick={() => navigate("/admin")}
       >
@@ -86,10 +86,10 @@ function AdminProfile() {
       <Box bg="white" maxW="620px" mx="auto" p={8} borderRadius="lg" boxShadow="md" border="1px solid" borderColor="gray.200">
         <Flex align="center" justify="space-between" mb={6}>
           <Flex align="center">
-            <Avatar size="xl" name={formData.name || profile?.name} mr={4} bg="blue.600" color="white" />
+            <Avatar size="xl" name={formData.name || profile?.name} mr={4} bg="brand.500" color="white" />
             <Box>
               <Heading size="md" color="gray.800">{formData.name || profile?.name}</Heading>
-              <Badge colorScheme={isAdmin ? "blue" : "green"} fontSize="sm" mt={1}>
+              <Badge colorScheme={isAdmin ? "brand" : "green"} fontSize="sm" mt={1}>
                 {profile?.role?.name || "Staff"}
               </Badge>
             </Box>
@@ -99,7 +99,7 @@ function AdminProfile() {
           {!isEditing ? (
             <Button
               leftIcon={<MdEdit size={16} />}
-              colorScheme="blue" variant="outline" size="sm"
+              colorScheme="brand" variant="outline" size="sm"
               onClick={handleEdit}
             >
               Edit
@@ -108,7 +108,7 @@ function AdminProfile() {
             <Flex gap={2}>
               <Button
                 leftIcon={<MdSave size={16} />}
-                colorScheme="blue" size="sm"
+                colorScheme="brand" size="sm"
                 isLoading={saving} loadingText="Saving"
                 onClick={handleSave}
               >
@@ -130,14 +130,14 @@ function AdminProfile() {
         <Stack spacing={5}>
           {/* Full Name */}
           <Flex align="center" gap={3}>
-            <Box bg="blue.50" p={2} borderRadius="md"><MdPerson size={20} color="#3b82f6" /></Box>
+            <Box bg="brand.50" p={2} borderRadius="md"><MdPerson size={20} color="#3b82f6" /></Box>
             <Box flex={1}>
               <Text fontSize="xs" color="gray.500" fontWeight="600">Full Name</Text>
               {isEditing ? (
                 <Input
                   size="sm" mt={1} value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  borderColor="blue.300" focusBorderColor="blue.500"
+                  borderColor="brand.300" focusBorderColor="brand.500"
                 />
               ) : (
                 <Text color="gray.800" fontWeight="500">{profile?.name || "—"}</Text>

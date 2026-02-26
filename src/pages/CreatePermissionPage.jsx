@@ -96,7 +96,7 @@ export default function CreatePermissionPage() {
               <option value={0}>Inactive</option>
             </Select>
           </FormControl>
-          <Button type="submit" colorScheme="blue" isLoading={loading}>
+          <Button type="submit" colorScheme="brand" isLoading={loading}>
             {isEdit ? "Update" : "Save"}
           </Button>
         </VStack>

@@ -127,7 +127,7 @@ export default function NotificationBell() {
                   key={n.id}
                   px={4}
                   py={3}
-                  bg={n.read ? "white" : "blue.50"}
+                  bg={n.read ? "white" : "brand.50"}
                   borderBottom="1px solid #f0f0f0"
                   _hover={{ bg: "gray.50" }}
                 >

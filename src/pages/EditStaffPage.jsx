@@ -88,7 +88,7 @@ const EditStaffPage = () => {
   if (pageLoading) {
     return (
       <Flex justify="center" align="center" h="60vh">
-        <Spinner size="xl" color="blue.500" />
+        <Spinner size="xl" color="brand.500" />
       </Flex>
     );
   }
@@ -106,8 +106,8 @@ const EditStaffPage = () => {
           borderColor={borderColor}
           color={textColor}
           onClick={() => navigate("/admin/staff")}
-          _hover={{ bg: "blue.50", borderColor: "blue.300", color: "blue.600",
-            _dark: { bg: "gray.700", borderColor: "blue.500", color: "blue.300" } }}
+          _hover={{ bg: "brand.50", borderColor: "brand.300", color: "brand.600",
+            _dark: { bg: "gray.700", borderColor: "brand.500", color: "brand.300" } }}
         />
         <Heading size="lg" color={textColor}>✏️ Edit Staff</Heading>
       </Flex>
@@ -187,7 +187,7 @@ const EditStaffPage = () => {
             <Button
               flex={2}
               type="submit"
-              colorScheme="blue"
+              colorScheme="brand"
               isLoading={saving}
               loadingText="Saving..."
             >

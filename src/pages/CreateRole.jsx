@@ -22,7 +22,7 @@ export default function CreateRole() {
   const cardBg    = useColorModeValue("white", "gray.800");
   const theadBg   = useColorModeValue("#bee3f8", "#2a4365");
   const textColor = useColorModeValue("gray.800", "white");
-  const thColor   = useColorModeValue("blue.700", "white");
+  const thColor   = useColorModeValue("brand.700", "white");
 
   useEffect(() => { fetchPermissions(); }, []);
 
@@ -140,7 +140,7 @@ export default function CreateRole() {
 
         <Flex justify="flex-end" mt={6} gap={3}>
           <Button variant="outline" onClick={() => navigate("/admin/roles")}>Cancel</Button>
-          <Button colorScheme="blue" onClick={handleCreate} isLoading={loading}>Create</Button>
+          <Button colorScheme="brand" onClick={handleCreate} isLoading={loading}>Create</Button>
         </Flex>
       </Box>
     </Box>

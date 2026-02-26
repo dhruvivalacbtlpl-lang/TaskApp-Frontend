@@ -51,7 +51,7 @@ function EditTaskStatus() {
     }
   };
 
-  if (loading) return <Flex justify="center" py={10}><Spinner size="xl" color="blue.500" /></Flex>;
+  if (loading) return <Flex justify="center" py={10}><Spinner size="xl" color="brand.500" /></Flex>;
 
   return (
     <Box bg={cardBg} p="6" borderRadius="md" boxShadow="sm" maxW="600px">
@@ -81,7 +81,7 @@ function EditTaskStatus() {
               <option value="INACTIVE">Inactive</option>
             </Select>
           </FormControl>
-          <Button type="submit" colorScheme="blue" isLoading={submitting}>
+          <Button type="submit" colorScheme="brand" isLoading={submitting}>
             Update Status
           </Button>
         </VStack>

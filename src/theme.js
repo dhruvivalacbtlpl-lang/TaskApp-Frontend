@@ -1,11 +1,10 @@
 import { extendTheme } from "@chakra-ui/react";
 
-// ✅ Change entire project color from .env
 export const brand = {
-  primary:      import.meta.env.VITE_PRIMARY_COLOR  || "#2563eb",
-  primaryLight: import.meta.env.VITE_PRIMARY_LIGHT  || "#eff6ff",
-  primaryHover: import.meta.env.VITE_PRIMARY_HOVER  || "#1d4ed8",
-  sidebar:      import.meta.env.VITE_SIDEBAR_COLOR  || "#2563eb",
+  primary:      import.meta.env.VITE_PRIMARY_COLOR  || "#7c3aed",
+  primaryLight: import.meta.env.VITE_PRIMARY_LIGHT  || "#f5f3ff",
+  primaryHover: import.meta.env.VITE_PRIMARY_HOVER  || "#6d28d9",
+  sidebar:      import.meta.env.VITE_SIDEBAR_COLOR  || "#7c3aed",
   accent:       import.meta.env.VITE_ACCENT_COLOR   || "#e53e3e",
 };
 
@@ -47,7 +46,9 @@ const theme = extendTheme({
         color: props.colorMode === "dark" ? "white !important" : "inherit",
       },
       "thead": {
-        background: props.colorMode === "dark" ? "#2a4365 !important" : `${brand.primaryLight} !important`,
+        background: props.colorMode === "dark"
+          ? "#2a4365 !important"
+          : `${brand.primaryLight} !important`,
       },
       "input, textarea, select": {
         background: props.colorMode === "dark" ? "#2d3748 !important" : "white !important",
@@ -173,14 +174,10 @@ const theme = extendTheme({
       }),
     },
     Button: {
-      defaultProps: {
-        colorScheme: "brand",
-      },
+      defaultProps: { colorScheme: "brand" },
     },
     Badge: {
-      defaultProps: {
-        colorScheme: "brand",
-      },
+      defaultProps: { colorScheme: "brand" },
     },
     Alert: {
       baseStyle: (props) => ({

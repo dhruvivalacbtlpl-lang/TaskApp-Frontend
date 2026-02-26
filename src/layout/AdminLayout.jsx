@@ -13,6 +13,11 @@ import {
 } from "react-icons/md";
 import { brand } from "../theme";
 
+// ─────────────────────────────────────────────
+// 🔍 Debug — remove after confirming colors work
+// ─────────────────────────────────────────────
+console.log("✅ AdminLayout using brand colors:", brand);
+
 function AdminLayout() {
   const navigate = useNavigate();
   const { hasPermission, user, logout, projects, selectedProject, selectProject } = useAuth();
@@ -24,8 +29,8 @@ function AdminLayout() {
   const selectBg       = useColorModeValue("gray.50", "gray.700");
   const selectColor    = useColorModeValue("gray.700", "white");
   const iconColor      = useColorModeValue("gray.600", "gray.300");
-  const iconHoverBg    = useColorModeValue("blue.50", "blue.900");
-  const iconHoverColor = useColorModeValue("blue.600", "blue.300");
+  const iconHoverBg    = useColorModeValue("gray.100", "gray.700");
+  const iconHoverColor = useColorModeValue("gray.800", "white");
 
   const handleLogout = async () => {
     try {
@@ -62,7 +67,7 @@ function AdminLayout() {
       {/* ── SIDEBAR ───────────────────────────────────────── */}
       <Box
         w="220px"
-        bg={brand.sidebar}
+        bg="brand.500"
         color="white"
         p="5"
         flexShrink={0}
@@ -76,7 +81,7 @@ function AdminLayout() {
           <Text fontSize="xl" fontWeight="bold">Task Manager</Text>
         </Flex>
 
-        {/* Nav links — no footer at bottom */}
+        {/* Nav Links */}
         <VStack align="stretch" spacing="1">
           <NavLink to="/admin" end style={linkStyle}>
             <MdDashboard size={18} /> Dashboard
@@ -146,11 +151,11 @@ function AdminLayout() {
           borderBottom={`1px solid ${topbarBorder}`}
           flexShrink={0}
         >
-          {/* LEFT — project selector only, no user info */}
+          {/* LEFT — project selector */}
           <Flex align="center" gap={2}>
             {projects.length > 0 && (
               <>
-                <MdFolder size={16} color={brand.primary} />
+                <MdFolder size={16} color="brand.500" />
                 <Select
                   size="sm"
                   w="160px"

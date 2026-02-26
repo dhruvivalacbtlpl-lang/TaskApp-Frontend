@@ -30,8 +30,8 @@ export default function ProjectsPage() {
   const theadBg   = useColorModeValue("#bee3f8", "#2a4365");
   const textColor = useColorModeValue("gray.800", "white");
   const subColor  = useColorModeValue("gray.500", "gray.400");
-  const rowHover  = useColorModeValue("blue.50", "gray.700");
-  const thColor   = useColorModeValue("blue.700", "white");
+  const rowHover  = useColorModeValue("brand.50", "gray.700");
+  const thColor   = useColorModeValue("brand.700", "white");
   const iconClr   = useColorModeValue("#2b6cb0", "#63b3ed");
 
   useSocket("project:created", () => refreshProjects());
@@ -80,7 +80,7 @@ export default function ProjectsPage() {
           <Heading size="md" color={textColor}>Projects</Heading>
         </Flex>
         {canCreate && (
-          <Button leftIcon={<AddIcon />} colorScheme="blue"
+          <Button leftIcon={<AddIcon />} colorScheme="brand"
             onClick={() => navigate("/admin/projects/create")}>
             Create Project
           </Button>
@@ -88,7 +88,7 @@ export default function ProjectsPage() {
       </Flex>
 
       {projectsLoading ? (
-        <Flex justify="center" py={10}><Spinner size="lg" color="blue.500" /></Flex>
+        <Flex justify="center" py={10}><Spinner size="lg" color="brand.500" /></Flex>
       ) : allProjects.length === 0 ? (
         <Flex direction="column" align="center" py={12} color={subColor}>
           <MdFolder size={40} />
@@ -112,8 +112,8 @@ export default function ProjectsPage() {
               {currentProjects.map((project, i) => (
                 <Tr key={project._id} _hover={{ bg: rowHover }} transition="background 0.15s">
                   <Td color={textColor}>{startIndex + i + 1}</Td>
-                  <Td fontWeight="600" color="blue.400" cursor="pointer"
-                    _hover={{ textDecoration: "underline", color: "blue.300" }}
+                  <Td fontWeight="600" color="brand.400" cursor="pointer"
+                    _hover={{ textDecoration: "underline", color: "brand.300" }}
                     onClick={() => navigate(`/admin/projects/${project._id}/detail`)}>
                     {project.name}
                   </Td>

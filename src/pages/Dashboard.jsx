@@ -7,6 +7,7 @@ import {
 } from "@chakra-ui/react";
 import { useAuth } from "../context/AuthContext";
 import api from "../api";
+import { brand } from "../theme";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, BarChart, Bar, Legend,
@@ -21,7 +22,7 @@ const isInProgress = (name = "") =>
 
 const getStatusColor = (name = "") => {
   if (isCompleted(name))  return "green";
-  if (isInProgress(name)) return "blue";
+  if (isInProgress(name)) return "brand";
   if (isPending(name))    return "yellow";
   return "gray";
 };
@@ -46,8 +47,8 @@ export default function Dashboard() {
   const subColor      = useColorModeValue("gray.500", "gray.400");
   const mutedColor    = useColorModeValue("gray.400", "gray.500");
   const borderColor   = useColorModeValue("#e5e7eb", "#4a5568");
-  const rowHover      = useColorModeValue("blue.50", "gray.700");
-  const rowHoverBdr   = useColorModeValue("blue.200", "blue.600");
+  const rowHover      = useColorModeValue("brand.50", "gray.700");
+  const rowHoverBdr   = useColorModeValue("brand.200", "brand.600");
   const progressBg    = useColorModeValue("gray.200", "gray.600");
   const progressInner = useColorModeValue("gray.50",  "gray.700");
   const chartGrid     = useColorModeValue("#f0f0f0",  "#4a5568");
@@ -67,14 +68,12 @@ export default function Dashboard() {
         const staff    = staffRes.data    || [];
         const projects = projectsRes.data || [];
 
-        // only count regular tasks (not issues) for dashboard stats
         const tasks = allTasks.filter(t => t.type !== "issue");
 
         const pending    = tasks.filter(t => isPending(t.taskStatus?.name    || "")).length;
         const completed  = tasks.filter(t => isCompleted(t.taskStatus?.name  || "")).length;
         const inProgress = tasks.filter(t => isInProgress(t.taskStatus?.name || "")).length;
 
-        // debug — remove after confirming fix
         console.log("Status sample:", tasks.slice(0, 5).map(t => t.taskStatus?.name));
         console.log({ pending, completed, inProgress });
 
@@ -89,7 +88,6 @@ export default function Dashboard() {
 
         setRecentTasks(tasks.slice(0, 5));
 
-        // staff breakdown
         const staffMap = {};
         tasks.forEach(task => {
           const name = task.assignee?.name;
@@ -105,7 +103,6 @@ export default function Dashboard() {
           Object.entries(staffMap).map(([name, counts]) => ({ name, ...counts }))
         );
 
-        // monthly breakdown
         const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
         const monthMap   = {};
         tasks.forEach(task => {
@@ -147,7 +144,7 @@ export default function Dashboard() {
   if (loading) {
     return (
       <Flex justify="center" align="center" h="60vh">
-        <Spinner size="xl" color="blue.500" thickness="3px" />
+        <Spinner size="xl" color="brand.500" thickness="3px" />
       </Flex>
     );
   }
@@ -160,18 +157,22 @@ export default function Dashboard() {
         </Alert>
       )}
 
-      {/* Welcome Header */}
-      <Flex bg="blue.500" p={6} borderRadius="xl" boxShadow="sm" mb={6}
+      {/* ── Welcome Banner — uses brand color from .env ── */}
+      <Flex
+        p={6} borderRadius="xl" boxShadow="sm" mb={6}
         align="center" justify="space-between"
-        bgGradient="linear(to-r, blue.600, blue.400)">
+        style={{
+          background: `linear-gradient(to right, ${import.meta.env.VITE_PRIMARY_HOVER || "#6d28d9"}, ${import.meta.env.VITE_PRIMARY_COLOR || "#7c3aed"})`,
+        }}
+      >
         <Box>
           <Heading size="md" color="white">👋 Welcome back, {displayName}!</Heading>
-          <Text fontSize="sm" color="blue.100" mt={1}>
+          <Text fontSize="sm" color="whiteAlpha.800" mt={1}>
             {displayRole ? `${displayRole} · ` : ""}Here's your team's performance at a glance.
           </Text>
         </Box>
         <VStack spacing={0} align="center">
-          <Avatar name={displayName} size="lg" bg="white" color="blue.500" />
+          <Avatar name={displayName} size="lg" bg="white" color="brand.500" />
           {displayRole && (
             <Badge mt={2} bg="whiteAlpha.300" color="white" fontSize="10px" borderRadius="full" px={2}>
               {displayRole}
@@ -180,7 +181,7 @@ export default function Dashboard() {
         </VStack>
       </Flex>
 
-      {/* Stats Cards */}
+      {/* ── Stats Cards ── */}
       <SimpleGrid columns={{ base: 2, sm: 3, lg: 6 }} spacing={4} mb={6}>
         {cards.map(card => (
           <Box key={card.label}
@@ -197,7 +198,7 @@ export default function Dashboard() {
         ))}
       </SimpleGrid>
 
-      {/* Charts Row */}
+      {/* ── Charts Row ── */}
       <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={4} mb={6}>
 
         {/* Area Chart */}
@@ -240,7 +241,7 @@ export default function Dashboard() {
           <SimpleGrid columns={3} spacing={4}>
             {[
               { rate: completionRate, color: "green.400",  label: "Completed",   count: stats.completed,  countColor: "green.500"  },
-              { rate: inProgressRate, color: "blue.400",   label: "In Progress", count: stats.inProgress, countColor: "blue.500"   },
+              { rate: inProgressRate, color: "brand.400",   label: "In Progress", count: stats.inProgress, countColor: "brand.500"   },
               { rate: pendingRate,    color: "yellow.400", label: "Pending",     count: stats.pending,    countColor: "yellow.500" },
             ].map(({ rate, color, label, count, countColor }) => (
               <Flex key={label} direction="column" align="center">
@@ -268,7 +269,7 @@ export default function Dashboard() {
         </Box>
       </SimpleGrid>
 
-      {/* Staff Bar Chart */}
+      {/* ── Staff Bar Chart ── */}
       <Box bg={cardBg} p={6} borderRadius="xl" boxShadow="sm" mb={6}>
         <Heading size="sm" color={textColor} mb={1}>👤 Staff Task Breakdown</Heading>
         <Text fontSize="xs" color={mutedColor} mb={4}>Tasks per staff member by status</Text>
@@ -292,7 +293,7 @@ export default function Dashboard() {
         )}
       </Box>
 
-      {/* Recent Tasks */}
+      {/* ── Recent Tasks ── */}
       <Box bg={cardBg} p={6} borderRadius="xl" boxShadow="sm">
         <Heading size="sm" color={textColor} mb={4}>🕐 Recent Tasks</Heading>
         {recentTasks.length === 0 ? (
@@ -326,7 +327,7 @@ export default function Dashboard() {
                     >
                       {task.taskStatus?.name || "N/A"}
                     </Badge>
-                    <Avatar name={task.assignee?.name} size="xs" bg="blue.400" title={task.assignee?.name} />
+                    <Avatar name={task.assignee?.name} size="xs" bg="brand.500" title={task.assignee?.name} />
                   </HStack>
                 </Flex>
               </Box>

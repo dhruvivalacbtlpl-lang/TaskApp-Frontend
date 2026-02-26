@@ -102,7 +102,7 @@ export default function StaffList({ staffs, setStaffs, onDelete, canUpdate, canD
                 <Td>{staff.email}</Td>
                 <Td>{staff.mobile}</Td>
                 <Td>
-                  <Badge colorScheme="blue" borderRadius="full" px={2}>
+                  <Badge colorScheme="brand" borderRadius="full" px={2}>
                     {staff.role?.name || "—"}
                   </Badge>
                 </Td>

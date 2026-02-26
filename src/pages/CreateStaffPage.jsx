@@ -105,8 +105,8 @@ const CreateStaffPage = () => {
           borderColor={borderColor}
           color={textColor}
           onClick={() => navigate("/admin/staff")}
-          _hover={{ bg: "blue.50", borderColor: "blue.300", color: "blue.600",
-            _dark: { bg: "gray.700", borderColor: "blue.500", color: "blue.300" } }}
+          _hover={{ bg: "brand.50", borderColor: "brand.300", color: "brand.600",
+            _dark: { bg: "gray.700", borderColor: "brand.500", color: "brand.300" } }}
         />
         <Heading size="lg" color={textColor}>👤 Create Staff</Heading>
       </Flex>
@@ -194,7 +194,7 @@ const CreateStaffPage = () => {
               <Button
                 flex={2}
                 type="submit"
-                colorScheme="blue"
+                colorScheme="brand"
                 isLoading={loading}
                 loadingText="Creating..."
               >

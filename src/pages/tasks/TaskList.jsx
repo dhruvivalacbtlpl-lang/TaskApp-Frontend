@@ -17,7 +17,7 @@ const normalizeStatus = (name = "") =>
 const getStatusColor = (name) => {
   switch (normalizeStatus(name)) {
     case "PENDING":     return "yellow";
-    case "IN_PROGRESS": return "blue";
+    case "IN_PROGRESS": return "brand";
     case "COMPLETED":   return "green";
     default:            return "gray";
   }
@@ -26,7 +26,7 @@ const getStatusColor = (name) => {
 const getStatusBorderColor = (name) => {
   switch (normalizeStatus(name)) {
     case "COMPLETED":   return "green.400";
-    case "IN_PROGRESS": return "blue.400";
+    case "IN_PROGRESS": return "brand.400";
     case "PENDING":     return "yellow.400";
     default:            return "gray.300";
   }
@@ -183,7 +183,7 @@ export default function TaskList() {
       <Flex justify="space-between" align="center" mb={2}>
         <Heading size="md" color={textColor}>✅ Tasks</Heading>
         {canCreate && (
-          <Button leftIcon={<MdAdd size={18} />} colorScheme="blue"
+          <Button leftIcon={<MdAdd size={18} />} colorScheme="brand"
             onClick={() => navigate("/admin/tasks/create")}>
             New Task
           </Button>
@@ -192,8 +192,8 @@ export default function TaskList() {
 
       <Box mb={4}>
         {selectedProject ? (
-          <Box p={2} bg="blue.50" borderRadius="lg" border="1px solid #bee3f8" display="inline-block">
-            <Text fontSize="xs" color="blue.600" fontWeight="600">📁 Showing: {selectedProject.name}</Text>
+          <Box p={2} bg="brand.50" borderRadius="lg" border="1px solid #bee3f8" display="inline-block">
+            <Text fontSize="xs" color="brand.600" fontWeight="600">📁 Showing: {selectedProject.name}</Text>
           </Box>
         ) : (
           <Text fontSize="xs" color={subColor}>Showing all tasks — select a project from the top bar to filter</Text>
@@ -225,7 +225,7 @@ export default function TaskList() {
       </Flex>
 
       {loading ? (
-        <Flex justify="center" py={12}><Spinner size="lg" color="blue.500" thickness="3px" /></Flex>
+        <Flex justify="center" py={12}><Spinner size="lg" color="brand.500" thickness="3px" /></Flex>
       ) : filteredTasks.length === 0 ? (
         <Flex direction="column" align="center" py={12} color={subColor}>
           <Text fontSize="sm" fontWeight="medium">No tasks found</Text>

@@ -84,7 +84,7 @@ export default function StaffPage() {
         <Heading size="md">Staff</Heading>
         {(isAdmin || hasPermission("Staff_create")) && (
           <Button
-            colorScheme="blue"
+            colorScheme="brand"
             onClick={() => navigate("/admin/staff/create")}
           >
             + Create Staff
@@ -138,7 +138,7 @@ export default function StaffPage() {
                           {(isAdmin || hasPermission("Staff_update")) && (
                             <Button
                               size="sm"
-                              colorScheme="blue"
+                              colorScheme="brand"
                               onClick={() => handleEdit(staff)}
                             >
                               ✏️
@@ -174,7 +174,7 @@ export default function StaffPage() {
                   <Button
                     key={page}
                     size="sm"
-                    colorScheme={page === currentPage ? "blue" : "gray"}
+                    colorScheme={page === currentPage ? "brand" : "gray"}
                     onClick={() => handlePageClick(page)}
                   >
                     {page}

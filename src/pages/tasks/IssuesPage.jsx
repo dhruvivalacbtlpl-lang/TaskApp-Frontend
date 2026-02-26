@@ -17,7 +17,7 @@ const severityColors  = { minor: "green", moderate: "yellow", major: "orange", c
 const statusColorScheme = (name = "") => {
   const n = name.toLowerCase();
   if (n.includes("done") || n.includes("complete") || n.includes("closed")) return "green";
-  if (n.includes("progress") || n.includes("active")) return "blue";
+  if (n.includes("progress") || n.includes("active")) return "brand";
   if (n.includes("review") || n.includes("test")) return "purple";
   if (n.includes("block") || n.includes("hold")) return "red";
   return "gray";
@@ -69,16 +69,16 @@ export default function IssuesPage() {
   const subColor    = useColorModeValue("gray.400", "gray.400");
   const rowEven     = useColorModeValue("white", "gray.800");
   const rowOdd      = useColorModeValue("gray.50", "gray.750");
-  const rowHover    = useColorModeValue("blue.50", "gray.700");
+  const rowHover    = useColorModeValue("brand.50", "gray.700");
   const borderColor = useColorModeValue("#e2e8f0", "#4a5568");
   const iconBg      = useColorModeValue("red.100", "red.900");
-  const projBlueBg  = useColorModeValue("blue.50", "blue.900");
+  const projBlueBg  = useColorModeValue("brand.50", "brand.900");
   const projBlueBdr = useColorModeValue("#bee3f8", "#2a4365");
-  const projBlueClr = useColorModeValue("blue.600", "blue.200");
+  const projBlueClr = useColorModeValue("brand.600", "brand.200");
   const readOnlyBg  = useColorModeValue("gray.50", "gray.700");
   const dropdownBg  = useColorModeValue("white", "gray.700");
   const dropBorder  = useColorModeValue("#e2e8f0", "#4a5568");
-  const dropHover   = useColorModeValue("blue.50", "gray.600");
+  const dropHover   = useColorModeValue("brand.50", "gray.600");
 
   useEffect(() => {
     if (!canRead) { setLoading(false); return; }
@@ -261,7 +261,7 @@ export default function IssuesPage() {
     }
   };
 
-  if (loading) return <Flex justify="center" py={20}><Spinner size="xl" color="blue.500" /></Flex>;
+  if (loading) return <Flex justify="center" py={20}><Spinner size="xl" color="brand.500" /></Flex>;
 
   return (
     <Box>
@@ -282,7 +282,7 @@ export default function IssuesPage() {
             </Box>
           </Flex>
           {canCreate && (
-            <Button leftIcon={<MdAdd />} colorScheme="blue" size="sm" onClick={handleNewIssueClick}>
+            <Button leftIcon={<MdAdd />} colorScheme="brand" size="sm" onClick={handleNewIssueClick}>
               New Issue
             </Button>
           )}
@@ -346,7 +346,7 @@ export default function IssuesPage() {
                     _hover={{ bg: rowHover }}
                     transition="background 0.15s">
                     <Td py={3} maxW="220px">
-                      <Badge colorScheme="blue" borderRadius="full" fontSize="xs" px={2} mb={1}>bug</Badge>
+                      <Badge colorScheme="brand" borderRadius="full" fontSize="xs" px={2} mb={1}>bug</Badge>
                       <Text fontWeight="600" fontSize="sm" color={textColor} noOfLines={1}>{issue.name}</Text>
                       <Text fontSize="xs" color={subColor} noOfLines={1}>{issue.description}</Text>
                     </Td>
@@ -373,7 +373,7 @@ export default function IssuesPage() {
                     </Td>
                     <Td>
                       <Flex align="center" gap={2}>
-                        <Avatar name={issue.assignee?.name} size="xs" bg="blue.400" color="white" />
+                        <Avatar name={issue.assignee?.name} size="xs" bg="brand.500" color="white" />
                         <Text fontSize="xs" color={textColor} whiteSpace="nowrap">{issue.assignee?.name}</Text>
                       </Flex>
                     </Td>
@@ -401,7 +401,7 @@ export default function IssuesPage() {
                         <Flex justify="flex-end" gap={1}>
                           {canUpdate && (
                             <Tooltip label="Edit">
-                              <IconButton icon={<MdEdit />} size="xs" colorScheme="blue" variant="ghost"
+                              <IconButton icon={<MdEdit />} size="xs" colorScheme="brand" variant="ghost"
                                 aria-label="Edit" onClick={() => handleOpen(issue)} />
                             </Tooltip>
                           )}
@@ -476,7 +476,7 @@ export default function IssuesPage() {
                             onMouseDown={(e) => { e.preventDefault(); insertMention(s); }}>
                             <Box
                               w="24px" h="24px" borderRadius="full"
-                              bg="blue.400" color="white"
+                              bg="brand.500" color="white"
                               display="flex" alignItems="center" justifyContent="center"
                               fontSize="10px" fontWeight="bold" flexShrink={0}
                             >
@@ -491,7 +491,7 @@ export default function IssuesPage() {
                   {mentions.length > 0 && (
                     <Flex gap={2} mt={2} wrap="wrap">
                       {mentions.map(m => (
-                        <Badge key={m} colorScheme="blue" borderRadius="full" px={2} fontSize="xs">@{m}</Badge>
+                        <Badge key={m} colorScheme="brand" borderRadius="full" px={2} fontSize="xs">@{m}</Badge>
                       ))}
                     </Flex>
                   )}
@@ -561,7 +561,7 @@ export default function IssuesPage() {
             </ModalBody>
             <ModalFooter>
               <Button variant="ghost" mr={3} onClick={() => { onClose(); resetModal(); }}>Cancel</Button>
-              <Button colorScheme="blue" isLoading={saving} onClick={handleSave}>
+              <Button colorScheme="brand" isLoading={saving} onClick={handleSave}>
                 {editingId ? "Update" : "Create"} Issue
               </Button>
             </ModalFooter>
