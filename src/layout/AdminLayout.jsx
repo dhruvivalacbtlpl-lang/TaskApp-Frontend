@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Box, Flex, Text, Button, VStack, HStack, Select,
   IconButton, useColorMode, useColorModeValue, Tooltip,
@@ -22,7 +22,7 @@ const EXPANDED_W  = "230px";
 function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { hasPermission, user, logout, projects, selectedProject, selectProject } = useAuth();
+  const { hasPermission, user, logout, projects, selectedProject, selectProject, refreshProfile } = useAuth();
   const { colorMode, toggleColorMode } = useColorMode();
 
   const isProjectGroupActive = [
@@ -32,6 +32,11 @@ function AdminLayout() {
 
   const [sidebarOpen, setSidebarOpen]   = useState(true);
   const [projectsOpen, setProjectsOpen] = useState(isProjectGroupActive);
+
+  // ── FIX 1: Re-fetch profile on every route change so permissions are always fresh ──
+  useEffect(() => {
+    refreshProfile();
+  }, [location.pathname]);
 
   const topbarBg       = useColorModeValue("white", "gray.800");
   const topbarBorder   = useColorModeValue("#f0f0f0", "#2d3748");
@@ -54,19 +59,21 @@ function AdminLayout() {
 
   const isAdmin = user?.role?.name?.toLowerCase() === "admin";
 
-  // ── These keys must match exactly what UpdateRole saves ──────────────────
-  // UpdateRole splits permission value by "_", so:
-  // permissions value "staff"      → saves "staff_read", "staff_create" etc
-  // permissions value "task"       → saves "task_read", "task_create" etc
-  // permissions value "taskstatus" → saves "taskstatus_read" etc
-  // permissions value "project"    → saves "project_read" etc
-  // permissions value "issues"     → saves "issues_read" etc
-  // permissions value "document"   → saves "document_read" etc
+  // ── FIX 2: Permission keys must match EXACTLY the module names in the DB ──
+  // From the UpdateRole screenshot the module names are:
+  // staff | role | permissions | task | taskstatus | project | issues | document
   const canSeeProjects   = isAdmin || hasPermission("project_read");
   const canSeeTasks      = isAdmin || hasPermission("task_read");
   const canSeeTaskStatus = isAdmin || hasPermission("taskstatus_read");
-  const canSeeIssues     = isAdmin || hasPermission("issues_read");
+  const canSeeIssues     = isAdmin || hasPermission("issues_read");   // "issues" plural ✓
   const canSeeDocuments  = isAdmin || hasPermission("document_read");
+
+  // ── FIX 3: Show the accordion if the user can access ANY item inside it ──
+  // The old code used {canSeeProjects && <accordion>} which meant users who had
+  // task/issues/documents permissions but NOT project_read would never see the
+  // Projects accordion — and therefore never see Tasks, Issues, or Documents.
+  const canSeeProjectsGroup =
+    canSeeProjects || canSeeTasks || canSeeTaskStatus || canSeeIssues || canSeeDocuments;
 
   const NavItem = ({ to, icon: Icon, label, end: endProp }) => (
     <Tooltip
@@ -95,13 +102,14 @@ function AdminLayout() {
     </Tooltip>
   );
 
+  // Only include sub-items the user actually has permission to see
   const subItems = [
-    { to: "/admin/projects",  icon: MdFolder,      label: "All Projects", end: true },
+    canSeeProjects   && { to: "/admin/projects", icon: MdFolder,      label: "All Projects", end: true },
     (isAdmin || hasPermission("project_read")) && { to: "/admin/team", icon: MdPeople, label: "Team" },
-    canSeeTasks      && { to: "/admin/tasks",        icon: MdCheckBox,    label: "Tasks" },
-    canSeeTaskStatus && { to: "/admin/task-status",  icon: MdLabel,       label: "Task Status" },
-    canSeeIssues     && { to: "/admin/issues",       icon: MdBugReport,   label: "Issues" },
-    canSeeDocuments  && { to: "/admin/documents",    icon: MdDescription, label: "Documents" },
+    canSeeTasks      && { to: "/admin/tasks",       icon: MdCheckBox,    label: "Tasks" },
+    canSeeTaskStatus && { to: "/admin/task-status", icon: MdLabel,       label: "Task Status" },
+    canSeeIssues     && { to: "/admin/issues",      icon: MdBugReport,   label: "Issues" },
+    canSeeDocuments  && { to: "/admin/documents",   icon: MdDescription, label: "Documents" },
   ].filter(Boolean);
 
   return (
@@ -166,7 +174,8 @@ function AdminLayout() {
           )}
 
           {/* ── Projects accordion ── */}
-          {canSeeProjects && (
+          {/* FIX 3: canSeeProjectsGroup = true if user can see ANY sub-item */}
+          {canSeeProjectsGroup && (
             <Box>
               <Tooltip
                 label="Projects" placement="right"

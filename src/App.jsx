@@ -25,7 +25,7 @@ import EditProject from "./pages/project/EditProject";
 import ProjectDetail from "./pages/project/ProjectDetail";
 import TeamPage from "./pages/Team/TeamPage";
 import IssuesPage from "./pages/tasks/IssuesPage";
-import DocumentsPage from "./pages/documents/DocumentsPage"; // ✅ NEW
+import DocumentsPage from "./pages/documents/Documentspage"; // ✅ NEW
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
