@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../api";
 import { useAuth } from "../context/AuthContext";
 import { AiOutlineEye, AiOutlineEyeInvisible } from "react-icons/ai";
@@ -14,6 +14,7 @@ function Login() {
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const pageBg   = useColorModeValue("#f4f6f8", "#0f1117");
   const cardBg   = useColorModeValue("#fff", "#1a1d27");
@@ -49,9 +50,12 @@ function Login() {
       const userData = res.data?.data || res.data?.staff || res.data;
       if (!userData) throw new Error("Invalid response from server");
       login(userData);
-      // ✅ Show success message then navigate
       setSuccess("Login successful! Redirecting...");
-      setTimeout(() => navigate("/admin"), 1200);
+      const redirectTo = searchParams.get("redirect") || "/admin";
+      console.log("🔍 Full URL:", window.location.href);
+      console.log("🔍 searchParams redirect:", searchParams.get("redirect"));
+      console.log("🔍 Redirecting to:", redirectTo);
+      setTimeout(() => window.location.href = redirectTo, 1200);
     } catch (adminErr) {
       setError(adminErr.response?.data?.message || adminErr.response?.data?.error || "Login failed. Please try again.");
     } finally {
@@ -70,7 +74,6 @@ function Login() {
       <form onSubmit={handleSubmit} style={{ width: "350px", padding: "30px", background: cardBg, borderRadius: "10px", boxShadow: "0 10px 25px rgba(0,0,0,0.15)" }}>
         <h2 style={{ textAlign: "center", marginBottom: "20px", fontSize: "22px", fontWeight: "bold", color: titleClr }}>🔐 Login</h2>
 
-        {/* ✅ Success message */}
         {success && (
           <div style={{ color: "#166534", fontSize: "13px", marginBottom: "12px", textAlign: "center", background: "#f0fdf4", padding: "10px", borderRadius: "6px", border: "1px solid #86efac" }}>
             ✅ {success}

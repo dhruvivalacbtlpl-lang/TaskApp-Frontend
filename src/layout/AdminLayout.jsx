@@ -33,7 +33,17 @@ function AdminLayout() {
   const [sidebarOpen, setSidebarOpen]   = useState(true);
   const [projectsOpen, setProjectsOpen] = useState(isProjectGroupActive);
 
-  // ── FIX 1: Re-fetch profile on every route change so permissions are always fresh ──
+  // ✅ Handle redirect param from email links when user is already logged in
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const redirect = params.get("redirect");
+    if (redirect) {
+      const target = redirect.startsWith("/admin") ? redirect : `/admin${redirect}`;
+      navigate(target, { replace: true });
+    }
+  }, []);
+
+  // Re-fetch profile on every route change so permissions are always fresh
   useEffect(() => {
     refreshProfile();
   }, [location.pathname]);
@@ -59,19 +69,12 @@ function AdminLayout() {
 
   const isAdmin = user?.role?.name?.toLowerCase() === "admin";
 
-  // ── FIX 2: Permission keys must match EXACTLY the module names in the DB ──
-  // From the UpdateRole screenshot the module names are:
-  // staff | role | permissions | task | taskstatus | project | issues | document
   const canSeeProjects   = isAdmin || hasPermission("project_read");
   const canSeeTasks      = isAdmin || hasPermission("task_read");
   const canSeeTaskStatus = isAdmin || hasPermission("taskstatus_read");
-  const canSeeIssues     = isAdmin || hasPermission("issues_read");   // "issues" plural ✓
+  const canSeeIssues     = isAdmin || hasPermission("issues_read");
   const canSeeDocuments  = isAdmin || hasPermission("document_read");
 
-  // ── FIX 3: Show the accordion if the user can access ANY item inside it ──
-  // The old code used {canSeeProjects && <accordion>} which meant users who had
-  // task/issues/documents permissions but NOT project_read would never see the
-  // Projects accordion — and therefore never see Tasks, Issues, or Documents.
   const canSeeProjectsGroup =
     canSeeProjects || canSeeTasks || canSeeTaskStatus || canSeeIssues || canSeeDocuments;
 
@@ -102,7 +105,6 @@ function AdminLayout() {
     </Tooltip>
   );
 
-  // Only include sub-items the user actually has permission to see
   const subItems = [
     canSeeProjects   && { to: "/admin/projects", icon: MdFolder,      label: "All Projects", end: true },
     (isAdmin || hasPermission("project_read")) && { to: "/admin/team", icon: MdPeople, label: "Team" },
@@ -173,8 +175,7 @@ function AdminLayout() {
             <NavItem to="/admin/permissions" icon={MdSecurity} label="Permissions" />
           )}
 
-          {/* ── Projects accordion ── */}
-          {/* FIX 3: canSeeProjectsGroup = true if user can see ANY sub-item */}
+          {/* Projects accordion */}
           {canSeeProjectsGroup && (
             <Box>
               <Tooltip

@@ -25,7 +25,8 @@ import EditProject from "./pages/project/EditProject";
 import ProjectDetail from "./pages/project/ProjectDetail";
 import TeamPage from "./pages/Team/TeamPage";
 import IssuesPage from "./pages/tasks/IssuesPage";
-import DocumentsPage from "./pages/documents/Documentspage"; // ✅ NEW
+import DocumentsPage from "./pages/documents/Documentspage";
+import GoPage from "./pages/GoPage";
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -38,6 +39,7 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Login />} />
+        <Route path="/login" element={<Login />} />
 
         <Route path="/admin" element={<AdminLayout />}>
           <Route index element={<Dashboard />} />
@@ -78,10 +80,10 @@ function App() {
 
           <Route path="team" element={<TeamPage />} />
           <Route path="issues" element={<IssuesPage />} />
-          <Route path="documents" element={<DocumentsPage />} /> {/* ✅ NEW */}
-
+          <Route path="documents" element={<DocumentsPage />} />
         </Route>
 
+        <Route path="/go" element={<GoPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

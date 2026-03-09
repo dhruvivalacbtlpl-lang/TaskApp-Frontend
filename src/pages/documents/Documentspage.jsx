@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Box, Flex, Heading, Text, Badge, Avatar, Spinner,
   Button, Modal, ModalOverlay, ModalContent, ModalHeader,
@@ -72,6 +73,9 @@ export default function DocumentsPage() {
 
   const [pendingRequests, setPendingRequests] = useState([]);
 
+  // ✅ Highlighted doc from email link
+  const [highlightedDocId, setHighlightedDocId] = useState(null);
+
   const { isOpen,                 onOpen,          onClose          } = useDisclosure();
   const { isOpen: isDeleteOpen,   onOpen: onDeleteOpen,   onClose: onDeleteClose   } = useDisclosure();
   const { isOpen: isAccessOpen,   onOpen: onAccessOpen,   onClose: onAccessClose   } = useDisclosure();
@@ -80,6 +84,9 @@ export default function DocumentsPage() {
 
   const toast = useToast();
   const { user, hasPermission, selectedProject } = useAuth();
+
+  // ✅ Read token + docId from URL query params (email link)
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const isAdmin   = user?.role?.name?.toLowerCase() === "admin";
   const canRead   = isAdmin || hasPermission("document_read");
@@ -108,8 +115,82 @@ export default function DocumentsPage() {
   const fileClr     = useColorModeValue("green.700", "green.200");
   const warnBg      = useColorModeValue("yellow.50", "yellow.900");
   const warnBdr     = useColorModeValue("yellow.300", "yellow.600");
+  const highlightBg = useColorModeValue("green.50", "green.900");
+  const highlightBdr= useColorModeValue("green.300", "green.600");
 
   useEffect(() => { fetchAll(); }, []);
+
+  // ✅ State for single request popup (from email link)
+  const [focusedRequest, setFocusedRequest] = useState(null);
+  const { isOpen: isFocusOpen, onOpen: onFocusOpen, onClose: onFocusClose } = useDisclosure();
+
+  // ✅ Auto-open single request popup if admin came from email link with requestId
+  useEffect(() => {
+    const requestId = searchParams.get("requestId");
+    if (!requestId || !isAdmin) return;
+
+    const openFocusedRequest = async () => {
+      try {
+        // Wait for pendingRequests to load
+        await new Promise(r => setTimeout(r, 1000));
+        const found = pendingRequests.find(r => r._id === requestId);
+        if (found) {
+          setFocusedRequest(found);
+          onFocusOpen();
+        } else {
+          // Fetch fresh and try again
+          const res = await api.get("/documents/access-requests");
+          const fresh = (res.data || []).find(r => r._id === requestId);
+          if (fresh) { setFocusedRequest(fresh); onFocusOpen(); }
+        }
+      } catch { /* silent */ }
+      setSearchParams({}, { replace: true });
+    };
+
+    openFocusedRequest();
+  }, [isAdmin, pendingRequests]);
+
+  // ✅ Handle token from email link — verify it, highlight the doc
+  useEffect(() => {
+    const token = searchParams.get("token");
+    const docId = searchParams.get("docId");
+    if (!token || !docId) return;
+
+    const verifyToken = async () => {
+      try {
+        const res = await api.get(`/documents/verify-token?token=${token}&docId=${docId}`);
+        if (res.data.valid) {
+          setHighlightedDocId(docId);
+          toast({
+            title: "✅ Access verified",
+            description: "Your document is highlighted below.",
+            status: "success",
+            duration: 5000,
+            isClosable: true,
+          });
+
+          // Scroll to the document row after docs load
+          setTimeout(() => {
+            const el = document.getElementById(`doc-row-${docId}`);
+            if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+          }, 1000);
+        }
+      } catch {
+        toast({
+          title: "🔗 Link expired or invalid",
+          description: "Please request access again if needed.",
+          status: "error",
+          duration: 5000,
+          isClosable: true,
+        });
+      } finally {
+        // Clean the token from the URL so it doesn't persist on refresh
+        setSearchParams({}, { replace: true });
+      }
+    };
+
+    verifyToken();
+  }, []);
 
   const fetchAll = async () => {
     try {
@@ -139,7 +220,6 @@ export default function DocumentsPage() {
   const isCreatorOfDoc = (doc) =>
     doc.createdBy?._id === user?._id || doc.createdBy === user?._id;
 
-  // ✅ Check allowedUsers — granted via access request approval
   const isAllowedUser = (doc) =>
     doc.allowedUsers?.some(
       (u) => (u?._id || u)?.toString() === user?._id?.toString()
@@ -300,14 +380,13 @@ export default function DocumentsPage() {
     }
   };
 
-  // ── Approve / Deny — also update local docs state ────────────────────────
+  // ── Approve / Deny ────────────────────────────────────────────────────────
   const handleGrantAccess = async (requestId, approve) => {
     try {
       await api.put(`/documents/access-requests/${requestId}`, {
         status: approve ? "approved" : "denied",
       });
 
-      // ✅ Refresh docs so allowedUsers is up to date
       const docsRes = await api.get("/documents");
       setDocs(docsRes.data || []);
 
@@ -349,7 +428,6 @@ export default function DocumentsPage() {
           </Flex>
 
           <HStack spacing={2}>
-            {/* Access Requests — always visible for admin */}
             {isAdmin && (
               <Button
                 leftIcon={<MdLockOpen />}
@@ -448,7 +526,8 @@ export default function DocumentsPage() {
               </Thead>
               <Tbody>
                 {paginated.map((doc, idx) => {
-                  const canSeeThisDoc = canReadDoc(doc);
+                  const canSeeThisDoc  = canReadDoc(doc);
+                  const isHighlighted  = doc._id === highlightedDocId;
 
                   // ── LOCKED ROW ──────────────────────────────────────────
                   if (!canSeeThisDoc) {
@@ -495,8 +574,12 @@ export default function DocumentsPage() {
 
                   // ── VISIBLE ROW ─────────────────────────────────────────
                   return (
-                    <Tr key={doc._id}
-                      bg={idx % 2 === 0 ? rowEven : rowOdd}
+                    <Tr
+                      key={doc._id}
+                      id={`doc-row-${doc._id}`}
+                      bg={isHighlighted ? highlightBg : idx % 2 === 0 ? rowEven : rowOdd}
+                      border={isHighlighted ? `2px solid` : undefined}
+                      borderColor={isHighlighted ? highlightBdr : undefined}
                       _hover={{ bg: rowHover }}
                       transition="background 0.15s"
                     >
@@ -507,6 +590,12 @@ export default function DocumentsPage() {
                           <Text fontWeight="600" fontSize="sm" color={textColor} noOfLines={1}>
                             {doc.title}
                           </Text>
+                          {/* ✅ "New Access" badge for email link arrivals */}
+                          {isHighlighted && (
+                            <Badge colorScheme="green" fontSize="9px" borderRadius="full" px={1.5}>
+                              ✓ Access Granted
+                            </Badge>
+                          )}
                         </Flex>
                       </Td>
                       <Td maxW="160px">
@@ -982,6 +1071,73 @@ export default function DocumentsPage() {
           </ModalBody>
           <ModalFooter>
             <Button variant="ghost" onClick={onRequestsClose}>Close</Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* ── MODAL: Single Request Popup (from email link) ─────────────────── */}
+      <Modal isOpen={isFocusOpen} onClose={onFocusClose} isCentered size="md">
+        <ModalOverlay />
+        <ModalContent bg={cardBg}>
+          <ModalHeader color={textColor}>
+            <Flex align="center" gap={2}>
+              <MdLockOpen /> Access Request
+            </Flex>
+          </ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            {focusedRequest ? (
+              <Box p={4} borderRadius="lg" border={`1px solid ${reqBdr}`} bg={reqBg}>
+                <Flex justify="space-between" align="flex-start">
+                  <Box flex={1}>
+                    <Flex align="center" gap={2} mb={2}>
+                      <Avatar name={focusedRequest.user?.name} size="sm" bg="brand.500" color="white" />
+                      <Box>
+                        <Text fontWeight="700" fontSize="sm" color={textColor}>
+                          {focusedRequest.user?.name}
+                        </Text>
+                        <Badge colorScheme="gray" fontSize="xs">{focusedRequest.user?.email}</Badge>
+                      </Box>
+                    </Flex>
+                    <Text fontSize="sm" color={subColor} mb={1}>
+                      Wants access to: <strong style={{ color: textColor }}>{focusedRequest.document?.title}</strong>
+                    </Text>
+                    {focusedRequest.document?.project?.name && (
+                      <Text fontSize="xs" color={subColor} mb={2}>📁 {focusedRequest.document.project.name}</Text>
+                    )}
+                    {focusedRequest.message && (
+                      <Box mt={2} p={3} bg={cardBg} borderRadius="md" border={`1px solid ${borderColor}`}>
+                        <Text fontSize="xs" color={subColor} fontWeight="600" mb={1}>Reason:</Text>
+                        <Text fontSize="sm" color={textColor}>"{focusedRequest.message}"</Text>
+                      </Box>
+                    )}
+                  </Box>
+                </Flex>
+              </Box>
+            ) : (
+              <Flex justify="center" py={6}><Spinner color="brand.500" /></Flex>
+            )}
+          </ModalBody>
+          <ModalFooter gap={3}>
+            <Button variant="ghost" onClick={onFocusClose}>Cancel</Button>
+            <Button
+              colorScheme="red" variant="outline" leftIcon={<MdClose />}
+              onClick={async () => {
+                await handleGrantAccess(focusedRequest._id, false);
+                onFocusClose();
+              }}
+            >
+              Deny
+            </Button>
+            <Button
+              colorScheme="green" leftIcon={<MdCheck />}
+              onClick={async () => {
+                await handleGrantAccess(focusedRequest._id, true);
+                onFocusClose();
+              }}
+            >
+              Approve
+            </Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
