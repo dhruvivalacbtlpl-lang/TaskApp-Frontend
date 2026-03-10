@@ -7,11 +7,11 @@ import {
   Table, Thead, Tbody, Tr, Th, Td, TableContainer,
   Grid, Tooltip, Alert, AlertIcon, AlertDescription,
   useColorModeValue, FormControl, FormErrorMessage, FormLabel,
-  HStack,
+  HStack, VStack,
 } from "@chakra-ui/react";
 import {
   MdAdd, MdDelete, MdEdit, MdBugReport, MdCheckCircle,
-  MdUploadFile, MdDownload,
+  MdUploadFile, MdDownload, MdDeleteSweep,
 } from "react-icons/md";
 import * as XLSX from "xlsx";
 import api from "../../api";
@@ -28,19 +28,13 @@ const statusColorScheme = (name = "") => {
   return "gray";
 };
 
-const SAFE_NAME  = /^[a-zA-Z0-9 .,\-_:!?()\n\r]*$/;
-const SAFE_DESC  = /^[a-zA-Z0-9 .,\-_:!?()@#/\n\r]*$/;
-const todayStr   = () => new Date().toISOString().split("T")[0];
+const SAFE_NAME = /^[a-zA-Z0-9 .,\-_:!?()\n\r]*$/;
+const SAFE_DESC = /^[a-zA-Z0-9 .,\-_:!?()@#/\n\r]*$/;
+const todayStr  = () => new Date().toISOString().split("T")[0];
 const PAGE_SIZES = [5, 10, 20];
-
-const empty = {
-  name: "", description: "", taskStatus: "", assignee: "",
-  priority: "medium", issueType: "bug", severity: "minor",
-  dueDate: "", createdDate: todayStr(),
-};
+const empty = { name: "", description: "", taskStatus: "", assignee: "", priority: "medium", issueType: "bug", severity: "minor", dueDate: "", createdDate: todayStr() };
 
 export default function IssuesPage() {
-  // ── Main state ─────────────────────────────────────────────────────────────
   const [issues, setIssues]       = useState([]);
   const [loading, setLoading]     = useState(true);
   const [staff, setStaff]         = useState([]);
@@ -61,15 +55,20 @@ export default function IssuesPage() {
   const textareaRef  = useRef(null);
   const fileInputRef = useRef(null);
 
-  // ── Bulk upload state ──────────────────────────────────────────────────────
-  const [parsedIssues, setParsedIssues]     = useState([]);
-  const [fileName, setFileName]             = useState("");
+  // ── Bulk state — counts only in state, rows in ref ────────────────────────
+  const [bulkFileName, setBulkFileName]     = useState("");
+  const [bulkFileReady, setBulkFileReady]   = useState(false);
+  const [bulkParseError, setBulkParseError] = useState("");
+  const [bulkRowCount, setBulkRowCount]     = useState(0);
+  const [bulkSkipped, setBulkSkipped]       = useState(0);
   const [bulkUploading, setBulkUploading]   = useState(false);
-  const [bulkRowErrors, setBulkRowErrors]   = useState({});
-  const [bulkSuccessMsg, setBulkSuccessMsg] = useState("");
-  const [bulkErrorMsg, setBulkErrorMsg]     = useState("");
+  const [bulkTotalCreated, setBulkTotalCreated] = useState(0);
+  const [bulkTotalFailed, setBulkTotalFailed]   = useState(0);
+  const [bulkDone, setBulkDone]             = useState(false);
+  const parsedRef  = useRef([]);  // rows stored here, NOT in state
+  const [deletingAll, setDeletingAll]   = useState(false);
+  const [deleteAllMsg, setDeleteAllMsg] = useState("");
 
-  // ── Modals ─────────────────────────────────────────────────────────────────
   const { isOpen, onOpen, onClose }                                            = useDisclosure();
   const { isOpen: isDeleteOpen, onOpen: onDeleteOpen, onClose: onDeleteClose } = useDisclosure();
   const { isOpen: isBulkOpen,  onOpen: onBulkOpen,   onClose: onBulkClose }   = useDisclosure();
@@ -77,13 +76,11 @@ export default function IssuesPage() {
   const toast = useToast();
   const { user, hasPermission, selectedProject } = useAuth();
   const isAdmin = user?.role?.name?.toLowerCase() === "admin";
-
   const canRead   = isAdmin || hasPermission("issues_read");
   const canCreate = isAdmin || hasPermission("issues_create");
   const canUpdate = isAdmin || hasPermission("issues_update");
   const canDelete = isAdmin || hasPermission("issues_delete");
 
-  // ── Colors ─────────────────────────────────────────────────────────────────
   const cardBg      = useColorModeValue("white", "gray.800");
   const theadBg     = useColorModeValue("#bee3f8", "#2a4365");
   const theadColor  = useColorModeValue("gray.600", "white");
@@ -103,9 +100,7 @@ export default function IssuesPage() {
   const dropHover   = useColorModeValue("brand.50", "gray.600");
   const uploadBoxBg = useColorModeValue("gray.50", "gray.700");
   const uploadBdr   = useColorModeValue("#bee3f8", "#4a5568");
-  const bulkRowHov  = useColorModeValue("#ebf8ff", "#2d3748");
 
-  // ── Fetch ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!canRead) { setLoading(false); return; }
     const fetchAll = async () => {
@@ -124,34 +119,25 @@ export default function IssuesPage() {
     fetchAll();
   }, [canRead]);
 
-  if (!canRead) {
-    return (
-      <Box p={6}>
-        <Alert status="error" borderRadius="md">
-          <AlertIcon /><AlertDescription>You don't have permission to view issues.</AlertDescription>
-        </Alert>
-      </Box>
-    );
-  }
+  if (!canRead) return (
+    <Box p={6}><Alert status="error" borderRadius="md"><AlertIcon /><AlertDescription>No permission to view issues.</AlertDescription></Alert></Box>
+  );
 
-  const filteredIssues = selectedProject
-    ? issues.filter(i => i.project?._id === selectedProject._id)
-    : issues;
+  const filteredIssues = selectedProject ? issues.filter(i => i.project?._id === selectedProject._id) : issues;
   const totalPages = Math.max(1, Math.ceil(filteredIssues.length / pageSize));
   const startIndex = (currentPage - 1) * pageSize;
   const paginated  = filteredIssues.slice(startIndex, startIndex + pageSize);
 
-  // ── Create / Edit helpers ──────────────────────────────────────────────────
+  // ── Create/Edit helpers ───────────────────────────────────────────────────
   const handleDescriptionChange = (e) => {
     const val = e.target.value;
     if (val && !SAFE_DESC.test(val)) return;
     setForm(p => ({ ...p, description: val }));
     setErrors(p => ({ ...p, description: undefined }));
     const caret = e.target.selectionStart;
-    const textUpToCaret = val.slice(0, caret);
-    const atIdx = textUpToCaret.lastIndexOf("@");
+    const atIdx = val.slice(0, caret).lastIndexOf("@");
     if (atIdx !== -1) {
-      const query = textUpToCaret.slice(atIdx + 1);
+      const query = val.slice(0, caret).slice(atIdx + 1);
       if (!query.includes(" ")) { setMentionQuery(query.toLowerCase()); setMentionPos(atIdx); setMentionOpen(true); return; }
     }
     setMentionOpen(false);
@@ -159,11 +145,11 @@ export default function IssuesPage() {
 
   const filteredStaff = staff.filter(s => s.name.toLowerCase().includes(mentionQuery));
 
-  const insertMention = (staffMember) => {
-    const before  = form.description.slice(0, mentionPos);
-    const after   = form.description.slice(textareaRef.current.selectionStart);
-    setForm(p => ({ ...p, description: `${before}@${staffMember.name} ${after}` }));
-    setMentions(prev => [...new Set([...prev, staffMember.name])]);
+  const insertMention = (s) => {
+    const before = form.description.slice(0, mentionPos);
+    const after  = form.description.slice(textareaRef.current.selectionStart);
+    setForm(p => ({ ...p, description: `${before}@${s.name} ${after}` }));
+    setMentions(prev => [...new Set([...prev, s.name])]);
     setMentionOpen(false);
     textareaRef.current.focus();
   };
@@ -179,18 +165,6 @@ export default function IssuesPage() {
     return e;
   };
 
-  const handleNameChange = (e) => {
-    const val = e.target.value;
-    if (val && !SAFE_NAME.test(val)) return;
-    setForm(p => ({ ...p, name: val }));
-    setErrors(p => ({ ...p, name: undefined }));
-  };
-
-  const handleFieldChange = (field, value) => {
-    setForm(p => ({ ...p, [field]: value }));
-    setErrors(p => ({ ...p, [field]: undefined }));
-  };
-
   const resetModal = () => {
     setForm({ ...empty, createdDate: todayStr() });
     setEditingId(null); setErrors({}); setMentions([]); setMentionOpen(false); setMentionQuery("");
@@ -202,13 +176,7 @@ export default function IssuesPage() {
   };
 
   const handleOpen = (issue) => {
-    setForm({
-      name: issue.name, description: issue.description,
-      taskStatus: issue.taskStatus?._id || "", assignee: issue.assignee?._id || "",
-      priority: issue.priority || "medium", issueType: "bug", severity: issue.severity || "minor",
-      dueDate: issue.dueDate ? issue.dueDate.split("T")[0] : "",
-      createdDate: issue.createdDate ? issue.createdDate.split("T")[0] : todayStr(),
-    });
+    setForm({ name: issue.name, description: issue.description, taskStatus: issue.taskStatus?._id || "", assignee: issue.assignee?._id || "", priority: issue.priority || "medium", issueType: "bug", severity: issue.severity || "minor", dueDate: issue.dueDate ? issue.dueDate.split("T")[0] : "", createdDate: issue.createdDate ? issue.createdDate.split("T")[0] : todayStr() });
     setEditingId(issue._id); setErrors({}); setMentions([]); setMentionOpen(false); onOpen();
   };
 
@@ -243,39 +211,60 @@ export default function IssuesPage() {
     finally { setDeleting(false); }
   };
 
-  // ── Bulk upload helpers ────────────────────────────────────────────────────
+  // ── Bulk helpers ──────────────────────────────────────────────────────────
   const resetBulk = () => {
-    setParsedIssues([]); setFileName(""); setBulkRowErrors({});
-    setBulkSuccessMsg(""); setBulkErrorMsg("");
+    setBulkFileName(""); setBulkFileReady(false); setBulkParseError("");
+    setBulkRowCount(0); setBulkSkipped(0);
+    setBulkUploading(false); setBulkTotalCreated(0); setBulkTotalFailed(0);
+    setBulkCurrentBatch(0); setBulkTotalBatches(0); setBulkDone(false);
+    parsedRef.current = [];
     if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleDeleteAll = async () => {
+    if (!window.confirm('Delete ALL issues? This cannot be undone.')) return;
+    setDeletingAll(true);
+    setDeleteAllMsg('');
+    try {
+      const res = await api.delete('/tasks/issues/all');
+      setIssues([]);
+      setDeleteAllMsg('deleted:' + res.data.deleted);
+    } catch {
+      setDeleteAllMsg('error');
+    } finally {
+      setDeletingAll(false);
+    }
   };
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    setFileName(file.name); setParsedIssues([]); setBulkRowErrors({});
+    resetBulk();
+    setBulkFileName(file.name);
+
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
         const wb   = XLSX.read(evt.target.result, { type: "binary" });
         const ws   = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
-        const normalised = rows.map(row => {
-          const out = {};
-          Object.keys(row).forEach(k => { out[k.trim().toLowerCase()] = row[k]; });
-          return out;
-        });
-        const parsed = normalised.map(row => {
-          const nameVal     = row["name"]        || row["title"]        || row["issue name"] || "";
-          const descVal     = row["description"] || row["desc"]         || "";
-          const assignVal   = row["assignee"]    || row["assigned to"]  || row["staff"]      || "";
-          const statusVal   = row["status"]      || row["task status"]  || "";
-          const priorityVal = String(row["priority"] || "medium").toLowerCase().trim();
-          const severityVal = String(row["severity"] || "minor").toLowerCase().trim();
-          const dueDateVal  = row["due date"]    || row["duedate"]      || row["due"]        || "";
+        const raw  = XLSX.utils.sheet_to_json(ws, { defval: "" });
 
-          const normPriority = ["low","medium","high","critical"].includes(priorityVal) ? priorityVal : "medium";
-          const normSeverity = ["minor","moderate","major","critical"].includes(severityVal) ? severityVal : "minor";
+        let valid = 0, skipped = 0;
+        const rows = [];
+
+        for (const row of raw) {
+          const norm = {};
+          Object.keys(row).forEach(k => { norm[k.trim().toLowerCase()] = row[k]; });
+
+          const name     = String(norm["name"] || norm["title"] || norm["issue name"] || "").trim();
+          const desc     = String(norm["description"] || norm["desc"] || "").trim();
+          const assign   = String(norm["assignee"] || norm["assigned to"] || norm["staff"] || "").trim();
+          const status   = String(norm["status"] || norm["task status"] || "").trim();
+          const priority = String(norm["priority"] || "medium").toLowerCase().trim();
+          const severity = String(norm["severity"] || "minor").toLowerCase().trim();
+          const dueDateVal = norm["due date"] || norm["duedate"] || norm["due"] || "";
+
+          if (!name || !assign) { skipped++; continue; }
 
           let parsedDue = "";
           if (dueDateVal) {
@@ -287,79 +276,69 @@ export default function IssuesPage() {
             }
           }
 
-          const matchedStaff  = staff.find(s => s.name.toLowerCase() === String(assignVal).trim().toLowerCase());
-          const matchedStatus = statuses.find(s => s.name.toLowerCase() === String(statusVal).trim().toLowerCase());
+          // Send raw names — backend resolves IDs and checks duplicates
+          rows.push({
+            name, description: desc,
+            assigneeName: assign,
+            statusName:   status,
+            priority:     ["low","medium","high","critical"].includes(priority) ? priority : "medium",
+            severity:     ["minor","moderate","major","critical"].includes(severity) ? severity : "minor",
+            issueType:    "bug",
+            dueDate:      parsedDue || null,
+          });
+          valid++;
+        }
 
-          return {
-            name: String(nameVal).trim(), description: String(descVal).trim(),
-            assigneeRaw: String(assignVal).trim(), statusRaw: String(statusVal).trim(),
-            assigneeId: matchedStaff?._id || "", statusId: matchedStatus?._id || "",
-            priority: normPriority, severity: normSeverity, dueDate: parsedDue,
-          };
-        }).filter(t => t.name);
+        if (valid === 0) {
+          setBulkParseError("No valid rows found. Check that the file has a name and assignee column.");
+          return;
+        }
 
-        if (parsed.length === 0) { setBulkErrorMsg("No valid rows found. Make sure your sheet has a 'name' column."); return; }
-        setParsedIssues(parsed); setBulkErrorMsg("");
-      } catch { setBulkErrorMsg("Failed to parse Excel file. Please check the format."); }
+        // Store in ref — no state update, no re-render, no crash
+        parsedRef.current = rows;
+        setBulkRowCount(valid);
+        setBulkSkipped(skipped);
+        setBulkFileReady(true);
+      } catch { setBulkParseError("Failed to parse file."); }
     };
     reader.readAsBinaryString(file);
     e.target.value = "";
   };
 
-  const updateBulkRow = (index, field, value) =>
-    setParsedIssues(prev => prev.map((t, i) => i === index ? { ...t, [field]: value } : t));
+  const handleBulkUpload = async () => {
+    const rows = parsedRef.current;
+    if (!rows.length) return;
 
-  const removeBulkRow = (index) =>
-    setParsedIssues(prev => prev.filter((_, i) => i !== index));
+    setBulkUploading(true); setBulkDone(false);
+    setBulkTotalCreated(0); setBulkTotalFailed(0);
+
+    try {
+      const res = await api.post("/tasks/issues/bulk", {
+        issues:  rows,
+        project: selectedProject?._id || null,
+      });
+      setBulkTotalCreated(res.data.created || 0);
+      setBulkTotalFailed(res.data.failed   || 0);
+    } catch {
+      setBulkTotalFailed(rows.length);
+    }
+
+    setBulkUploading(false);
+    setBulkDone(true);
+
+    // Refresh list
+    try { const res = await api.get("/tasks/issues/all"); setIssues(res.data || []); } catch {}
+  };
 
   const downloadSample = () => {
-    const sampleData = [
-      { name: "Login button not working",  description: "Clicking login does nothing on Safari", assignee: "John Doe",   status: "Pending",     priority: "high",     severity: "major",    "due date": "2026-04-15" },
-      { name: "Dashboard crashes on load", description: "Uncaught TypeError in useEffect hook",  assignee: "Jane Smith", status: "In Progress", priority: "critical", severity: "critical", "due date": "2026-04-10" },
+    const sample = [
+      { name: "Login button not working", description: "Nothing happens on Safari", assignee: "John Doe", status: "Pending", priority: "high", severity: "major", "due date": "2026-04-15" },
+      { name: "Dashboard crashes",        description: "TypeError in useEffect",    assignee: "Jane Smith", status: "In Progress", priority: "critical", severity: "critical", "due date": "2026-04-10" },
     ];
-    const ws = XLSX.utils.json_to_sheet(sampleData);
+    const ws = XLSX.utils.json_to_sheet(sample);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Issues");
     XLSX.writeFile(wb, "bulk_issues_sample.xlsx");
-  };
-
-  const handleBulkUpload = async () => {
-    if (parsedIssues.length === 0) { setBulkErrorMsg("No issues to upload."); return; }
-    const errs = {};
-    parsedIssues.forEach((t, i) => {
-      if (!t.name)             errs[i] = "Issue name is required.";
-      else if (!t.description) errs[i] = "Description is required.";
-      else if (!t.assigneeId)  errs[i] = `Assignee "${t.assigneeRaw}" not found. Select from dropdown.`;
-      else if (!t.dueDate)     errs[i] = "Due date is required.";
-    });
-    if (Object.keys(errs).length) { setBulkRowErrors(errs); setBulkErrorMsg("Some rows have errors. Fix them before uploading."); return; }
-    setBulkRowErrors({});
-    setBulkUploading(true);
-    let successCount = 0, failCount = 0;
-    const newErrors = {};
-    const created   = [];
-    for (let i = 0; i < parsedIssues.length; i++) {
-      const t = parsedIssues[i];
-      try {
-        const res = await api.post("/tasks/issues/create", {
-          name: t.name, description: t.description, assignee: t.assigneeId,
-          taskStatus: t.statusId || undefined, priority: t.priority,
-          severity: t.severity, issueType: "bug", dueDate: t.dueDate,
-          project: selectedProject?._id || null,
-        });
-        created.push(res.data); successCount++;
-      } catch (err) { failCount++; newErrors[i] = err.response?.data?.error || "Failed to create."; }
-    }
-    setBulkUploading(false);
-    if (created.length) setIssues(prev => [...created, ...prev]);
-    if (failCount === 0) {
-      setBulkSuccessMsg(`✅ ${successCount} issue${successCount !== 1 ? "s" : ""} created successfully!`);
-      toast({ title: `${successCount} issues created!`, status: "success", duration: 3000 });
-      setTimeout(() => { onBulkClose(); resetBulk(); }, 1800);
-    } else {
-      setBulkRowErrors(newErrors);
-      setBulkErrorMsg(`${successCount} created, ${failCount} failed. Fix the highlighted rows.`);
-    }
   };
 
   if (loading) return <Flex justify="center" py={20}><Spinner size="xl" color="brand.500" /></Flex>;
@@ -377,7 +356,7 @@ export default function IssuesPage() {
             <Box>
               <Heading size="md" color={textColor}>Issues</Heading>
               <Text fontSize="sm" color={subColor}>
-                {selectedProject ? `Showing bugs for: ${selectedProject.name}` : `Showing all ${issues.length} issues — select a project to filter`}
+                {selectedProject ? `Showing bugs for: ${selectedProject.name}` : `All projects · ${issues.length} issues`}
               </Text>
             </Box>
           </Flex>
@@ -386,6 +365,10 @@ export default function IssuesPage() {
               <Button leftIcon={<MdUploadFile size={17} />} colorScheme="gray" variant="outline" size="sm"
                 onClick={() => { resetBulk(); onBulkOpen(); }}>
                 Bulk Upload
+              </Button>
+              <Button leftIcon={<MdDeleteSweep size={17} />} colorScheme="red" variant="outline" size="sm"
+                onClick={handleDeleteAll} isLoading={deletingAll} loadingText="Deleting...">
+                Delete All
               </Button>
               <Button leftIcon={<MdAdd />} colorScheme="brand" size="sm" onClick={handleNewIssueClick}>
                 New Issue
@@ -397,7 +380,18 @@ export default function IssuesPage() {
 
       {showProjectAlert && (
         <Alert status="warning" borderRadius="xl" mb={4}><AlertIcon />
-          <AlertDescription fontWeight="500">Please select a project from the top bar before creating an issue.</AlertDescription>
+          <AlertDescription fontWeight="500">Please select a project before creating an issue.</AlertDescription>
+        </Alert>
+      )}
+
+      {deleteAllMsg && (
+        <Alert status={deleteAllMsg.startsWith('deleted') ? 'info' : 'error'} borderRadius="xl" mb={4}>
+          <AlertIcon />
+          <AlertDescription fontSize="sm">
+            {deleteAllMsg.startsWith('deleted')
+              ? 'Deleted ' + deleteAllMsg.split(':')[1] + ' issue(s) successfully.'
+              : 'Failed to delete issues.'}
+          </AlertDescription>
         </Alert>
       )}
 
@@ -406,7 +400,7 @@ export default function IssuesPage() {
           border="1px solid" borderColor="green.200" _dark={{ bg: "green.900", borderColor: "green.600" }}>
           <MdCheckCircle size={52} color="#38a169" />
           <Heading size="md" color="green.700" _dark={{ color: "green.200" }} mt={3}>No Bugs Found</Heading>
-          <Text fontSize="sm" color="green.600" _dark={{ color: "green.300" }} mt={1}>No issues reported for {selectedProject.name}</Text>
+          <Text fontSize="sm" color="green.600" _dark={{ color: "green.300" }} mt={1}>No issues for {selectedProject.name}</Text>
         </Flex>
       )}
 
@@ -482,36 +476,33 @@ export default function IssuesPage() {
         </Box>
       )}
 
-      {/* ── MODAL: Create / Edit ── */}
+      {/* ── MODAL: Create/Edit ── */}
       {(canCreate || canUpdate) && (
         <Modal isOpen={isOpen} onClose={() => { onClose(); resetModal(); }} isCentered size="lg">
-          <ModalOverlay />
-          <ModalContent bg={cardBg}>
+          <ModalOverlay /><ModalContent bg={cardBg}>
             <ModalHeader color={textColor}>{editingId ? "Edit Issue" : "New Issue"}</ModalHeader>
             <ModalCloseButton />
             <ModalBody>
               {selectedProject && (
                 <Box mb={3} p={3} bg={projBlueBg} borderRadius="lg" border={`1px solid ${projBlueBdr}`}>
-                  <Text fontSize="xs" color={projBlueClr} fontWeight="600">📁 Project: {selectedProject.name}</Text>
+                  <Text fontSize="xs" color={projBlueClr} fontWeight="600">📁 {selectedProject.name}</Text>
                 </Box>
               )}
               <Flex direction="column" gap={3}>
                 <FormControl isInvalid={!!errors.name}>
-                  <Input placeholder="Issue name *" value={form.name} onChange={handleNameChange} />
+                  <Input placeholder="Issue name *" value={form.name}
+                    onChange={e => { if (e.target.value && !SAFE_NAME.test(e.target.value)) return; setForm(p => ({ ...p, name: e.target.value })); setErrors(p => ({ ...p, name: undefined })); }} />
                   <FormErrorMessage>{errors.name}</FormErrorMessage>
                 </FormControl>
                 <FormControl isInvalid={!!errors.description}>
-                  <FormLabel fontSize="sm" color={textColor} mb={1}>
-                    Description *
-                    <Text as="span" fontSize="xs" color={subColor} fontWeight="normal" ml={2}>(type @ to mention staff)</Text>
-                  </FormLabel>
+                  <FormLabel fontSize="sm" color={textColor} mb={1}>Description * <Text as="span" fontSize="xs" color={subColor}>(@ to mention)</Text></FormLabel>
                   <Box position="relative">
-                    <Textarea ref={textareaRef} placeholder="Describe the issue..." value={form.description} onChange={handleDescriptionChange} rows={4} />
+                    <Textarea ref={textareaRef} value={form.description} onChange={handleDescriptionChange} rows={4} placeholder="Describe the issue..." />
                     {mentionOpen && filteredStaff.length > 0 && (
                       <Box position="absolute" top="100%" left={0} zIndex={100} bg={dropdownBg} border={`1px solid ${dropBorder}`} borderRadius="md" boxShadow="lg" maxH="160px" overflowY="auto" w="220px" mt={1}>
                         {filteredStaff.map(s => (
                           <Flex key={s._id} px={3} py={2} align="center" gap={2} cursor="pointer" _hover={{ bg: dropHover }} onMouseDown={e => { e.preventDefault(); insertMention(s); }}>
-                            <Box w="24px" h="24px" borderRadius="full" bg="brand.500" color="white" display="flex" alignItems="center" justifyContent="center" fontSize="10px" fontWeight="bold" flexShrink={0}>{s.name.charAt(0).toUpperCase()}</Box>
+                            <Box w="24px" h="24px" borderRadius="full" bg="brand.500" color="white" display="flex" alignItems="center" justifyContent="center" fontSize="10px" fontWeight="bold">{s.name.charAt(0).toUpperCase()}</Box>
                             <Text fontSize="sm" color={textColor}>{s.name}</Text>
                           </Flex>
                         ))}
@@ -522,20 +513,20 @@ export default function IssuesPage() {
                   <FormErrorMessage>{errors.description}</FormErrorMessage>
                 </FormControl>
                 <FormControl isInvalid={!!errors.assignee}>
-                  <Select placeholder="Assignee *" value={form.assignee} onChange={e => handleFieldChange("assignee", e.target.value)}>
+                  <Select placeholder="Assignee *" value={form.assignee} onChange={e => { setForm(p => ({ ...p, assignee: e.target.value })); setErrors(p => ({ ...p, assignee: undefined })); }}>
                     {staff.map(s => <option key={s._id} value={s._id}>{s.name}</option>)}
                   </Select>
                   <FormErrorMessage>{errors.assignee}</FormErrorMessage>
                 </FormControl>
-                <Select placeholder="Status" value={form.taskStatus} onChange={e => handleFieldChange("taskStatus", e.target.value)}>
+                <Select placeholder="Status" value={form.taskStatus} onChange={e => setForm(p => ({ ...p, taskStatus: e.target.value }))}>
                   {statuses.map(s => <option key={s._id} value={s._id}>{s.name}</option>)}
                 </Select>
                 <Grid templateColumns="repeat(2, 1fr)" gap={3}>
-                  <Select value={form.priority} onChange={e => handleFieldChange("priority", e.target.value)}>
-                    <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option>
+                  <Select value={form.priority} onChange={e => setForm(p => ({ ...p, priority: e.target.value }))}>
+                    {priorityOpts.map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
                   </Select>
-                  <Select value={form.severity} onChange={e => handleFieldChange("severity", e.target.value)}>
-                    <option value="minor">Minor</option><option value="moderate">Moderate</option><option value="major">Major</option><option value="critical">Critical</option>
+                  <Select value={form.severity} onChange={e => setForm(p => ({ ...p, severity: e.target.value }))}>
+                    {severityOpts.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
                   </Select>
                 </Grid>
                 <Grid templateColumns="repeat(2, 1fr)" gap={3}>
@@ -545,7 +536,7 @@ export default function IssuesPage() {
                   </FormControl>
                   <FormControl isInvalid={!!errors.dueDate}>
                     <FormLabel fontSize="xs" color={subColor} mb={1}>Due Date *</FormLabel>
-                    <Input type="date" value={form.dueDate} min={form.createdDate} onChange={e => handleFieldChange("dueDate", e.target.value)} />
+                    <Input type="date" value={form.dueDate} min={form.createdDate} onChange={e => { setForm(p => ({ ...p, dueDate: e.target.value })); setErrors(p => ({ ...p, dueDate: undefined })); }} />
                     <FormErrorMessage>{errors.dueDate}</FormErrorMessage>
                   </FormControl>
                 </Grid>
@@ -561,10 +552,9 @@ export default function IssuesPage() {
 
       {/* ── MODAL: Delete ── */}
       <Modal isOpen={isDeleteOpen} onClose={onDeleteClose} isCentered size="sm">
-        <ModalOverlay />
-        <ModalContent bg={cardBg} borderRadius="xl">
+        <ModalOverlay /><ModalContent bg={cardBg} borderRadius="xl">
           <ModalHeader fontSize="md" color={textColor}>Delete Issue</ModalHeader>
-          <ModalBody fontSize="sm" color={subColor}>Are you sure you want to delete this issue? This action cannot be undone.</ModalBody>
+          <ModalBody fontSize="sm" color={subColor}>Are you sure? This cannot be undone.</ModalBody>
           <ModalFooter gap={2}>
             <Button size="sm" variant="ghost" onClick={onDeleteClose}>Cancel</Button>
             <Button size="sm" colorScheme="red" isLoading={deleting} loadingText="Deleting..." onClick={handleDeleteConfirm}>Delete</Button>
@@ -572,148 +562,109 @@ export default function IssuesPage() {
         </ModalContent>
       </Modal>
 
-      {/* ── MODAL: Bulk Upload ── */}
-      <Modal isOpen={isBulkOpen} onClose={() => { onBulkClose(); resetBulk(); }} isCentered size="6xl" scrollBehavior="inside">
-        <ModalOverlay />
-        <ModalContent bg={cardBg}>
+      {/* ── MODAL: Bulk Upload — clean, no preview table ── */}
+      <Modal isOpen={isBulkOpen}
+        onClose={() => { if (!bulkUploading) { onBulkClose(); resetBulk(); } }}
+        isCentered size="md" closeOnOverlayClick={!bulkUploading}>
+        <ModalOverlay /><ModalContent bg={cardBg}>
           <ModalHeader>
             <Flex align="center" gap={2}>
               <Box bg={iconBg} p={2} borderRadius="lg"><MdUploadFile size={18} color="#c53030" /></Box>
               <Text color={textColor}>Bulk Upload Issues</Text>
             </Flex>
           </ModalHeader>
-          <ModalCloseButton />
+          {!bulkUploading && <ModalCloseButton />}
           <ModalBody>
+            <VStack spacing={4} align="stretch">
 
-            {bulkSuccessMsg && <Alert status="success" borderRadius="md" mb={4}><AlertIcon /><AlertDescription>{bulkSuccessMsg}</AlertDescription></Alert>}
-            {bulkErrorMsg   && <Alert status="error"   borderRadius="md" mb={4}><AlertIcon /><AlertDescription>{bulkErrorMsg}</AlertDescription></Alert>}
-
-            {selectedProject ? (
-              <Box mb={4} p={3} bg={projBlueBg} borderRadius="lg" border={`1px solid ${projBlueBdr}`}>
-                <Text fontSize="xs" color={projBlueClr} fontWeight="600">📁 Issues will be added to: {selectedProject.name}</Text>
-              </Box>
-            ) : (
-              <Alert status="warning" borderRadius="md" mb={4}><AlertIcon />
-                <AlertDescription fontSize="sm">No project selected — issues will be created without a project.</AlertDescription>
-              </Alert>
-            )}
-
-            {/* Upload zone */}
-            <Box mb={5}>
-              <Text fontWeight="600" fontSize="sm" color={textColor} mb={2}>Upload Excel File</Text>
-              <Flex direction="column" align="center" justify="center" p={6} borderRadius="xl"
-                border={`2px dashed ${uploadBdr}`} bg={uploadBoxBg} cursor="pointer" gap={2}
-                onClick={() => fileInputRef.current?.click()} _hover={{ borderColor: "red.400" }} transition="border-color 0.2s">
-                <MdUploadFile size={36} color="#fc8181" />
-                <Text fontWeight="500" color={textColor} fontSize="sm">
-                  {fileName ? `📄 ${fileName}` : "Click to select Excel file (.xlsx / .xls)"}
-                </Text>
-                <Text fontSize="xs" color={subColor}>
-                  Required: <b>name</b>, <b>description</b>, <b>assignee</b>, <b>due date</b>
-                  &nbsp;— Optional: <b>status</b>, <b>priority</b>, <b>severity</b>
-                </Text>
-                <Input ref={fileInputRef} type="file" accept=".xlsx,.xls" display="none" onChange={handleFileChange} />
-              </Flex>
-            </Box>
-
-            {/* Preview table */}
-            {parsedIssues.length > 0 && (
-              <Box>
-                <Text fontWeight="600" fontSize="sm" color={textColor} mb={3}>
-                  Preview — {parsedIssues.length} issue{parsedIssues.length !== 1 ? "s" : ""} found
-                  <Text as="span" fontSize="xs" color={subColor} fontWeight="normal" ml={2}>(fix any errors below before uploading)</Text>
-                </Text>
-                <Box overflowX="auto">
-                  <Table size="sm" style={{ borderCollapse: "collapse" }}>
-                    <Thead>
-                      <Tr style={{ background: theadBg }}>
-                        {["#","Name","Description","Assignee","Status","Priority","Severity","Due Date",""].map(h => (
-                          <Th key={h} style={{ color: theadColor, padding: "9px", whiteSpace: "nowrap" }}>{h}</Th>
-                        ))}
-                      </Tr>
-                    </Thead>
-                    <Tbody>
-                      {parsedIssues.map((issue, i) => (
-                        <>
-                          <Tr key={i}
-                            style={{ background: bulkRowErrors[i] ? "rgba(254,178,178,0.2)" : "transparent" }}
-                            onMouseEnter={e => e.currentTarget.style.background = bulkRowErrors[i] ? "rgba(254,178,178,0.3)" : bulkRowHov}
-                            onMouseLeave={e => e.currentTarget.style.background = bulkRowErrors[i] ? "rgba(254,178,178,0.2)" : "transparent"}>
-                            <Td style={{ padding: "7px", borderBottom: `1px solid ${borderColor}`, color: subColor, fontSize: "12px" }}>{i + 1}</Td>
-                            <Td style={{ padding: "7px", borderBottom: `1px solid ${borderColor}` }}>
-                              <Input size="xs" value={issue.name} minW="150px" onChange={e => updateBulkRow(i, "name", e.target.value)} isInvalid={bulkRowErrors[i] && !issue.name} />
-                            </Td>
-                            <Td style={{ padding: "7px", borderBottom: `1px solid ${borderColor}` }}>
-                              <Input size="xs" value={issue.description} minW="170px" onChange={e => updateBulkRow(i, "description", e.target.value)} isInvalid={bulkRowErrors[i] && !issue.description} />
-                            </Td>
-                            <Td style={{ padding: "7px", borderBottom: `1px solid ${borderColor}` }}>
-                              <Select size="xs" value={issue.assigneeId} minW="130px" onChange={e => updateBulkRow(i, "assigneeId", e.target.value)} isInvalid={bulkRowErrors[i] && !issue.assigneeId}>
-                                <option value="">{issue.assigneeRaw ? `⚠ ${issue.assigneeRaw}` : "Select"}</option>
-                                {staff.map(s => <option key={s._id} value={s._id}>{s.name}</option>)}
-                              </Select>
-                            </Td>
-                            <Td style={{ padding: "7px", borderBottom: `1px solid ${borderColor}` }}>
-                              <Select size="xs" value={issue.statusId} minW="120px" onChange={e => updateBulkRow(i, "statusId", e.target.value)}>
-                                <option value="">{issue.statusRaw ? `⚠ ${issue.statusRaw}` : "No status"}</option>
-                                {statuses.map(s => <option key={s._id} value={s._id}>{s.name}</option>)}
-                              </Select>
-                            </Td>
-                            <Td style={{ padding: "7px", borderBottom: `1px solid ${borderColor}` }}>
-                              <Select size="xs" value={issue.priority} minW="100px" onChange={e => updateBulkRow(i, "priority", e.target.value)}>
-                                {priorityOpts.map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
-                              </Select>
-                            </Td>
-                            <Td style={{ padding: "7px", borderBottom: `1px solid ${borderColor}` }}>
-                              <Select size="xs" value={issue.severity} minW="105px" onChange={e => updateBulkRow(i, "severity", e.target.value)}>
-                                {severityOpts.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
-                              </Select>
-                            </Td>
-                            <Td style={{ padding: "7px", borderBottom: `1px solid ${borderColor}` }}>
-                              <Input size="xs" type="date" value={issue.dueDate} minW="130px" onChange={e => updateBulkRow(i, "dueDate", e.target.value)} isInvalid={bulkRowErrors[i] && !issue.dueDate} />
-                            </Td>
-                            <Td style={{ padding: "7px", borderBottom: `1px solid ${borderColor}` }}>
-                              <IconButton size="xs" colorScheme="red" variant="ghost" icon={<MdDelete size={13} />} aria-label="Remove" onClick={() => removeBulkRow(i)} />
-                            </Td>
-                          </Tr>
-                          {bulkRowErrors[i] && (
-                            <Tr key={`err-${i}`}>
-                              <Td colSpan={9} style={{ padding: "3px 8px", borderBottom: `1px solid ${borderColor}` }}>
-                                <Text fontSize="xs" color="red.400">⚠ {bulkRowErrors[i]}</Text>
-                              </Td>
-                            </Tr>
-                          )}
-                        </>
-                      ))}
-                    </Tbody>
-                  </Table>
+              {/* Project info */}
+              {selectedProject ? (
+                <Box p={3} bg={projBlueBg} borderRadius="lg" border={`1px solid ${projBlueBdr}`}>
+                  <Text fontSize="xs" color={projBlueClr} fontWeight="600">📁 {selectedProject.name}</Text>
                 </Box>
-              </Box>
-            )}
+              ) : (
+                <Alert status="warning" borderRadius="md"><AlertIcon />
+                  <AlertDescription fontSize="sm">No project selected.</AlertDescription>
+                </Alert>
+              )}
 
-            {/* Tips */}
-            {parsedIssues.length === 0 && !fileName && (
-              <Box p={4} borderRadius="lg" bg={uploadBoxBg} border={`1px solid ${uploadBdr}`}>
-                <Text fontSize="sm" fontWeight="600" color={textColor} mb={2}>📌 How it works</Text>
-                <Text fontSize="xs" color={subColor} lineHeight="tall">
-                  1. Click <b>Sample Excel</b> below to download the template.<br />
-                  2. Fill each row as one issue — <b>name</b>, <b>description</b>, <b>assignee</b>, <b>due date</b> are required.<br />
-                  3. <b>priority</b> (low / medium / high / critical) and <b>severity</b> (minor / moderate / major / critical) are optional.<br />
-                  4. Upload the file — unmatched assignees can be fixed from the dropdown in the preview.<br />
-                  5. Click <b>Upload All</b> to create all issues at once.
-                </Text>
-              </Box>
-            )}
+              {/* Upload zone — hidden during upload */}
+              {!bulkUploading && !bulkDone && (
+                <Box>
+                  <Flex direction="column" align="center" justify="center" p={8} borderRadius="xl"
+                    border={`2px dashed ${uploadBdr}`} bg={uploadBoxBg} cursor="pointer" gap={2}
+                    onClick={() => fileInputRef.current?.click()}
+                    _hover={{ borderColor: "red.400" }} transition="border-color 0.2s">
+                    <MdUploadFile size={36} color="#fc8181" />
+                    <Text fontWeight="500" color={textColor} fontSize="sm" textAlign="center">
+                      {bulkFileName ? `📄 ${bulkFileName}` : "Click to select .xlsx / .xls file"}
+                    </Text>
+                    <Text fontSize="xs" color={subColor} textAlign="center">
+                      Columns: <b>name</b>, <b>description</b>, <b>assignee</b>, <b>due date</b>
+                    </Text>
+                    <Input ref={fileInputRef} type="file" accept=".xlsx,.xls" display="none" onChange={handleFileChange} />
+                  </Flex>
+                </Box>
+              )}
+
+              {/* Parse error */}
+              {bulkParseError && (
+                <Alert status="error" borderRadius="lg">
+                  <AlertIcon /><AlertDescription fontSize="sm">{bulkParseError}</AlertDescription>
+                </Alert>
+              )}
+
+              {/* File ready — counts only, no table */}
+              {bulkFileReady && !bulkUploading && !bulkDone && (
+                <Box p={4} borderRadius="xl" border={`1px solid ${borderColor}`} bg={uploadBoxBg}>
+                  <HStack spacing={2} mb={1}>
+                    <Badge colorScheme="green" borderRadius="full" px={2}>✅ {bulkRowCount} ready</Badge>
+                    {bulkSkipped > 0 && <Badge colorScheme="orange" borderRadius="full" px={2}>⚠ {bulkSkipped} skipped</Badge>}
+                  </HStack>
+                  {bulkSkipped > 0 && (
+                    <Text fontSize="xs" color={subColor}>Skipped rows had missing names or unmatched assignees.</Text>
+                  )}
+                </Box>
+              )}
+
+              {/* Uploading spinner */}
+              {bulkUploading && (
+                <Flex p={5} borderRadius="xl" border={`1px solid ${borderColor}`} bg={uploadBoxBg}
+                  align="center" justify="center" gap={3}>
+                  <Spinner size="sm" color="red.400" />
+                  <Text fontSize="sm" color={textColor} fontWeight="500">Uploading {bulkRowCount} issues…</Text>
+                </Flex>
+              )}
+
+              {/* Done */}
+              {bulkDone && (
+                <Alert status={bulkTotalFailed > 0 && bulkTotalCreated === 0 ? "error" : bulkTotalFailed > 0 ? "warning" : "success"} borderRadius="xl">
+                  <AlertIcon />
+                  <Text fontSize="sm" fontWeight="600">
+                    {bulkTotalFailed > 0
+                      ? `${bulkTotalCreated} created, ${bulkTotalFailed} skipped (duplicates or unmatched)`
+                      : `✅ ${bulkTotalCreated} issue${bulkTotalCreated !== 1 ? "s" : ""} created!`}
+                  </Text>
+                </Alert>
+              )}
+
+            </VStack>
           </ModalBody>
 
           <ModalFooter gap={2}>
-            <Button size="sm" leftIcon={<MdDownload size={15} />} variant="outline" colorScheme="gray" onClick={downloadSample}>
-              Sample Excel
+            <Button size="sm" leftIcon={<MdDownload size={15} />} variant="outline"
+              colorScheme="gray" onClick={downloadSample} isDisabled={bulkUploading}>
+              Sample
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => { onBulkClose(); resetBulk(); }}>Cancel</Button>
-            {parsedIssues.length > 0 && (
-              <Button colorScheme="red" size="sm" leftIcon={<MdUploadFile size={15} />}
-                isLoading={bulkUploading} loadingText="Uploading..." onClick={handleBulkUpload}>
-                Upload {parsedIssues.length} Issue{parsedIssues.length !== 1 ? "s" : ""}
+            {!bulkUploading && !bulkDone && (
+              <Button variant="ghost" size="sm" onClick={() => { onBulkClose(); resetBulk(); }}>Cancel</Button>
+            )}
+            {bulkDone && (
+              <Button size="sm" variant="outline" onClick={resetBulk}>Upload Another</Button>
+            )}
+            {bulkFileReady && !bulkUploading && !bulkDone && (
+              <Button colorScheme="red" size="sm" leftIcon={<MdUploadFile size={15} />} onClick={handleBulkUpload}>
+                Upload {bulkRowCount} Issues
               </Button>
             )}
           </ModalFooter>

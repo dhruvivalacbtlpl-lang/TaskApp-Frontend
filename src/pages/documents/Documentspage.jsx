@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
+import ReactQuill from "react-quill";
+import "react-quill/dist/quill.snow.css";
 import {
   Box, Flex, Heading, Text, Badge, Avatar, Spinner,
   Button, Modal, ModalOverlay, ModalContent, ModalHeader,
@@ -7,16 +9,17 @@ import {
   Input, Textarea, Select, useToast, IconButton,
   Table, Thead, Tbody, Tr, Th, Td, TableContainer,
   Tooltip, useColorModeValue, FormControl, FormErrorMessage, FormLabel,
-  HStack, VStack, Grid,
+  HStack, VStack, Grid, Switch,
 } from "@chakra-ui/react";
 import {
   MdAdd, MdDelete, MdEdit, MdDescription,
   MdLock, MdLockOpen, MdMail, MdCheck, MdClose,
-  MdAttachFile, MdDownload, MdClear, MdPerson,
+  MdAttachFile, MdDownload, MdClear, MdPerson, MdSave,
 } from "react-icons/md";
 import api from "../../api";
 import { useAuth } from "../../context/AuthContext";
 
+// ── Constants ─────────────────────────────────────────────────────────────────
 const statusColors = {
   draft:    "gray",
   active:   "green",
@@ -27,6 +30,24 @@ const statusColors = {
 const SAFE_TEXT  = /^[a-zA-Z0-9 .,\-_:!?()\n\r@#/]*$/;
 const empty      = { title: "", description: "", status: "draft", assignee: "" };
 const PAGE_SIZES = [5, 10, 20];
+
+// Quill toolbar config
+const QUILL_MODULES = {
+  toolbar: [
+    [{ header: [1, 2, 3, false] }],
+    ["bold", "italic", "underline", "strike"],
+    [{ list: "ordered" }, { list: "bullet" }],
+    [{ indent: "-1" }, { indent: "+1" }],
+    ["blockquote", "code-block"],
+    ["link"],
+    ["clean"],
+  ],
+};
+const QUILL_FORMATS = [
+  "header", "bold", "italic", "underline", "strike",
+  "list", "bullet", "indent",
+  "blockquote", "code-block", "link",
+];
 
 const fmtSize = (bytes) => {
   if (!bytes) return "";
@@ -45,7 +66,9 @@ const fileIcon = (mimetype) => {
   return "📎";
 };
 
+// ── Component ─────────────────────────────────────────────────────────────────
 export default function DocumentsPage() {
+  // ── Core state ───────────────────────────────────────────────────────────
   const [docs, setDocs]           = useState([]);
   const [loading, setLoading]     = useState(true);
   const [staff, setStaff]         = useState([]);
@@ -56,36 +79,43 @@ export default function DocumentsPage() {
   const [deleteId, setDeleteId]   = useState(null);
   const [deleting, setDeleting]   = useState(false);
 
+  // ── Editor state ─────────────────────────────────────────────────────────
+  const [editorContent, setEditorContent] = useState("");
+  const [autoSave, setAutoSave]           = useState(false);
+  const [autoSaving, setAutoSaving]       = useState(false);
+  const [lastSaved, setLastSaved]         = useState(null);
+  const autoSaveTimer                     = useRef(null);
+
+  // ── File state ───────────────────────────────────────────────────────────
   const [selectedFile, setSelectedFile] = useState(null);
   const [removeFile, setRemoveFile]     = useState(false);
   const [existingFile, setExistingFile] = useState(null);
   const fileInputRef = useRef(null);
 
+  // ── Pagination ───────────────────────────────────────────────────────────
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize]       = useState(5);
 
+  // ── Access request state ─────────────────────────────────────────────────
   const [accessDoc, setAccessDoc]         = useState(null);
   const [accessMessage, setAccessMessage] = useState("");
   const [accessSending, setAccessSending] = useState(false);
-
   const [moduleAccessMessage, setModuleAccessMessage] = useState("");
   const [moduleAccessSending, setModuleAccessSending] = useState(false);
-
   const [pendingRequests, setPendingRequests] = useState([]);
-
-  // ✅ Highlighted doc from email link
   const [highlightedDocId, setHighlightedDocId] = useState(null);
+  const [focusedRequest, setFocusedRequest]     = useState(null);
 
+  // ── Modals ───────────────────────────────────────────────────────────────
   const { isOpen,                 onOpen,          onClose          } = useDisclosure();
   const { isOpen: isDeleteOpen,   onOpen: onDeleteOpen,   onClose: onDeleteClose   } = useDisclosure();
   const { isOpen: isAccessOpen,   onOpen: onAccessOpen,   onClose: onAccessClose   } = useDisclosure();
   const { isOpen: isRequestsOpen, onOpen: onRequestsOpen, onClose: onRequestsClose } = useDisclosure();
   const { isOpen: isModuleOpen,   onOpen: onModuleOpen,   onClose: onModuleClose   } = useDisclosure();
+  const { isOpen: isFocusOpen,    onOpen: onFocusOpen,    onClose: onFocusClose    } = useDisclosure();
 
   const toast = useToast();
   const { user, hasPermission, selectedProject } = useAuth();
-
-  // ✅ Read token + docId from URL query params (email link)
   const [searchParams, setSearchParams] = useSearchParams();
 
   const isAdmin   = user?.role?.name?.toLowerCase() === "admin";
@@ -117,28 +147,58 @@ export default function DocumentsPage() {
   const warnBdr     = useColorModeValue("yellow.300", "yellow.600");
   const highlightBg = useColorModeValue("green.50", "green.900");
   const highlightBdr= useColorModeValue("green.300", "green.600");
+  const autoSaveBg  = useColorModeValue("green.50", "green.900");
+  const autoSaveBdr = useColorModeValue("green.200", "green.600");
 
+  // ── Initial fetch ────────────────────────────────────────────────────────
   useEffect(() => { fetchAll(); }, []);
 
-  // ✅ State for single request popup (from email link)
-  const [focusedRequest, setFocusedRequest] = useState(null);
-  const { isOpen: isFocusOpen, onOpen: onFocusOpen, onClose: onFocusClose } = useDisclosure();
+  // ── Auto-save effect (edit mode only, debounced 2s) ───────────────────────
+  useEffect(() => {
+    if (!autoSave || !editingId || !isOpen) return;
 
-  // ✅ Auto-open single request popup if admin came from email link with requestId
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+
+    autoSaveTimer.current = setTimeout(async () => {
+      setAutoSaving(true);
+      try {
+        const fd = new FormData();
+        fd.append("title",       form.title);
+        fd.append("description", form.description);
+        fd.append("status",      form.status);
+        fd.append("content",     editorContent);
+        if (form.assignee)   fd.append("assignee",   form.assignee);
+        if (selectedProject) fd.append("project",    selectedProject._id);
+
+        // ✅ PUT /documents/:id — update only
+        const res = await api.put(`/documents/${editingId}`, fd, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+        setDocs(prev => prev.map(d => d._id === editingId ? res.data : d));
+        setLastSaved(new Date());
+      } catch {
+        toast({ title: "Auto-save failed", status: "warning", duration: 2000 });
+      } finally {
+        setAutoSaving(false);
+      }
+    }, 2000);
+
+    return () => clearTimeout(autoSaveTimer.current);
+  }, [form, editorContent, autoSave, editingId, isOpen]);
+
+  // ── Email link: single request popup ─────────────────────────────────────
   useEffect(() => {
     const requestId = searchParams.get("requestId");
     if (!requestId || !isAdmin) return;
 
     const openFocusedRequest = async () => {
       try {
-        // Wait for pendingRequests to load
         await new Promise(r => setTimeout(r, 1000));
         const found = pendingRequests.find(r => r._id === requestId);
         if (found) {
           setFocusedRequest(found);
           onFocusOpen();
         } else {
-          // Fetch fresh and try again
           const res = await api.get("/documents/access-requests");
           const fresh = (res.data || []).find(r => r._id === requestId);
           if (fresh) { setFocusedRequest(fresh); onFocusOpen(); }
@@ -150,7 +210,7 @@ export default function DocumentsPage() {
     openFocusedRequest();
   }, [isAdmin, pendingRequests]);
 
-  // ✅ Handle token from email link — verify it, highlight the doc
+  // ── Email link: verify token ──────────────────────────────────────────────
   useEffect(() => {
     const token = searchParams.get("token");
     const docId = searchParams.get("docId");
@@ -164,12 +224,8 @@ export default function DocumentsPage() {
           toast({
             title: "✅ Access verified",
             description: "Your document is highlighted below.",
-            status: "success",
-            duration: 5000,
-            isClosable: true,
+            status: "success", duration: 5000, isClosable: true,
           });
-
-          // Scroll to the document row after docs load
           setTimeout(() => {
             const el = document.getElementById(`doc-row-${docId}`);
             if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -179,12 +235,9 @@ export default function DocumentsPage() {
         toast({
           title: "🔗 Link expired or invalid",
           description: "Please request access again if needed.",
-          status: "error",
-          duration: 5000,
-          isClosable: true,
+          status: "error", duration: 5000, isClosable: true,
         });
       } finally {
-        // Clean the token from the URL so it doesn't persist on refresh
         setSearchParams({}, { replace: true });
       }
     };
@@ -192,56 +245,40 @@ export default function DocumentsPage() {
     verifyToken();
   }, []);
 
+  // ── Fetch all ─────────────────────────────────────────────────────────────
   const fetchAll = async () => {
     try {
       setLoading(true);
       const [docsRes, staffRes, reqRes] = await Promise.all([
         api.get("/documents"),
         api.get("/staff"),
-        isAdmin
-          ? api.get("/documents/access-requests")
-          : Promise.resolve({ data: [] }),
+        isAdmin ? api.get("/documents/access-requests") : Promise.resolve({ data: [] }),
       ]);
       setDocs(docsRes.data || []);
       setStaff(staffRes.data || []);
       setPendingRequests(reqRes.data || []);
-    } catch (err) {
-      console.error("fetchAll error:", err);
+    } catch {
       toast({ title: "Failed to load documents", status: "error", duration: 2000 });
     } finally {
       setLoading(false);
     }
   };
 
-  // ── Document-level access ─────────────────────────────────────────────────
-  const isAssignedToDoc = (doc) =>
-    doc.assignee?._id === user?._id || doc.assignee === user?._id;
-
-  const isCreatorOfDoc = (doc) =>
-    doc.createdBy?._id === user?._id || doc.createdBy === user?._id;
-
-  const isAllowedUser = (doc) =>
-    doc.allowedUsers?.some(
-      (u) => (u?._id || u)?.toString() === user?._id?.toString()
-    );
-
-  const canReadDoc = (doc) =>
-    isAdmin || isAssignedToDoc(doc) || isCreatorOfDoc(doc) || isAllowedUser(doc);
+  // ── Access helpers ────────────────────────────────────────────────────────
+  const isAssignedToDoc = (doc) => doc.assignee?._id === user?._id || doc.assignee === user?._id;
+  const isCreatorOfDoc  = (doc) => doc.createdBy?._id === user?._id || doc.createdBy === user?._id;
+  const isAllowedUser   = (doc) => doc.allowedUsers?.some(u => (u?._id || u)?.toString() === user?._id?.toString());
+  const canReadDoc      = (doc) => isAdmin || isAssignedToDoc(doc) || isCreatorOfDoc(doc) || isAllowedUser(doc);
 
   // ── Filter + paginate ─────────────────────────────────────────────────────
-  const projectFiltered = selectedProject
-    ? docs.filter(d => d.project?._id === selectedProject._id)
-    : docs;
-
-  const visibleDocs    = projectFiltered.filter(d => canReadDoc(d));
-  const lockedDocs     = canRead && !isAdmin
-    ? projectFiltered.filter(d => !canReadDoc(d))
-    : [];
-  const allDisplayDocs = [...visibleDocs, ...lockedDocs];
-  const totalPages     = Math.max(1, Math.ceil(allDisplayDocs.length / pageSize));
-  const startIndex     = (currentPage - 1) * pageSize;
-  const paginated      = allDisplayDocs.slice(startIndex, startIndex + pageSize);
-  const pendingCount   = pendingRequests.length;
+  const projectFiltered = selectedProject ? docs.filter(d => d.project?._id === selectedProject._id) : docs;
+  const visibleDocs     = projectFiltered.filter(d => canReadDoc(d));
+  const lockedDocs      = canRead && !isAdmin ? projectFiltered.filter(d => !canReadDoc(d)) : [];
+  const allDisplayDocs  = [...visibleDocs, ...lockedDocs];
+  const totalPages      = Math.max(1, Math.ceil(allDisplayDocs.length / pageSize));
+  const startIndex      = (currentPage - 1) * pageSize;
+  const paginated       = allDisplayDocs.slice(startIndex, startIndex + pageSize);
+  const pendingCount    = pendingRequests.length;
 
   // ── Validation ────────────────────────────────────────────────────────────
   const validate = () => {
@@ -252,6 +289,7 @@ export default function DocumentsPage() {
     return e;
   };
 
+  // ── Reset modal ───────────────────────────────────────────────────────────
   const resetModal = () => {
     setForm(empty);
     setEditingId(null);
@@ -259,9 +297,14 @@ export default function DocumentsPage() {
     setSelectedFile(null);
     setRemoveFile(false);
     setExistingFile(null);
+    setEditorContent("");
+    setAutoSave(false);
+    setLastSaved(null);
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  // ── Open edit modal ───────────────────────────────────────────────────────
   const handleOpen = (doc) => {
     setForm({
       title:       doc.title,
@@ -274,10 +317,13 @@ export default function DocumentsPage() {
     setSelectedFile(null);
     setRemoveFile(false);
     setErrors({});
+    setEditorContent(doc.content || "");
+    setAutoSave(false);
+    setLastSaved(null);
     onOpen();
   };
 
-  // ── Save ──────────────────────────────────────────────────────────────────
+  // ── Save (manual) ─────────────────────────────────────────────────────────
   const handleSave = async () => {
     const e = validate();
     if (Object.keys(e).length) { setErrors(e); return; }
@@ -286,8 +332,7 @@ export default function DocumentsPage() {
       toast({
         title: "Please select a project first",
         description: "Use the project dropdown in the top navbar.",
-        status: "warning",
-        duration: 4000,
+        status: "warning", duration: 4000,
       });
       return;
     }
@@ -298,21 +343,22 @@ export default function DocumentsPage() {
       fd.append("title",       form.title);
       fd.append("description", form.description);
       fd.append("status",      form.status);
+      fd.append("content",     editorContent);
       if (form.assignee)   fd.append("assignee",   form.assignee);
       if (selectedProject) fd.append("project",    selectedProject._id);
-      if (selectedFile)    fd.append("file",       selectedFile);
-      if (removeFile)      fd.append("removeFile", "true");
+      if (selectedFile)    fd.append("file",        selectedFile);
+      if (removeFile)      fd.append("removeFile",  "true");
+
+      const headers = { "Content-Type": "multipart/form-data" };
 
       if (editingId) {
-        const res = await api.put(`/documents/${editingId}`, fd, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
+        // ✅ UPDATE — PUT /documents/:id
+        const res = await api.put(`/documents/${editingId}`, fd, { headers });
         setDocs(prev => prev.map(d => d._id === editingId ? res.data : d));
         toast({ title: "Document updated!", status: "success", duration: 2000 });
       } else {
-        const res = await api.post("/documents", fd, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
+        // ✅ CREATE — POST /documents
+        const res = await api.post("/documents", fd, { headers });
         setDocs(prev => [res.data, ...prev]);
         toast({ title: "Document created!", status: "success", duration: 2000 });
       }
@@ -342,7 +388,7 @@ export default function DocumentsPage() {
     }
   };
 
-  // ── Request access to specific doc ───────────────────────────────────────
+  // ── Request access ────────────────────────────────────────────────────────
   const handleRequestAccess = async () => {
     if (!accessDoc) return;
     setAccessSending(true);
@@ -365,7 +411,7 @@ export default function DocumentsPage() {
     }
   };
 
-  // ── Request module access ─────────────────────────────────────────────────
+  // ── Module access ─────────────────────────────────────────────────────────
   const handleModuleAccessRequest = async () => {
     setModuleAccessSending(true);
     try {
@@ -386,15 +432,12 @@ export default function DocumentsPage() {
       await api.put(`/documents/access-requests/${requestId}`, {
         status: approve ? "approved" : "denied",
       });
-
       const docsRes = await api.get("/documents");
       setDocs(docsRes.data || []);
-
       setPendingRequests(prev => prev.filter(r => r._id !== requestId));
       toast({
         title: approve ? "Access granted & email sent!" : "Request denied & user notified",
-        status: approve ? "success" : "info",
-        duration: 2000,
+        status: approve ? "success" : "info", duration: 2000,
       });
     } catch {
       toast({ title: "Failed to update request", status: "error", duration: 2000 });
@@ -407,10 +450,13 @@ export default function DocumentsPage() {
     </Flex>
   );
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // RENDER
+  // ─────────────────────────────────────────────────────────────────────────
   return (
     <Box>
 
-      {/* ── HEADER ────────────────────────────────────────────────────────── */}
+      {/* ── HEADER ──────────────────────────────────────────────────────── */}
       <Box bg={cardBg} p={6} borderRadius="xl" boxShadow="md" mb={4}>
         <Flex justify="space-between" align="center">
           <Flex align="center" gap={3}>
@@ -429,42 +475,20 @@ export default function DocumentsPage() {
 
           <HStack spacing={2}>
             {isAdmin && (
-              <Button
-                leftIcon={<MdLockOpen />}
-                colorScheme="orange"
-                size="sm"
-                variant="outline"
-                onClick={onRequestsOpen}
-                position="relative"
-              >
+              <Button leftIcon={<MdLockOpen />} colorScheme="orange" size="sm" variant="outline"
+                onClick={onRequestsOpen} position="relative">
                 Access Requests
                 {pendingCount > 0 && (
-                  <Badge
-                    colorScheme="red"
-                    borderRadius="full"
-                    position="absolute"
-                    top="-8px"
-                    right="-8px"
-                    fontSize="10px"
-                    px={1.5}
-                  >
+                  <Badge colorScheme="red" borderRadius="full" position="absolute"
+                    top="-8px" right="-8px" fontSize="10px" px={1.5}>
                     {pendingCount}
                   </Badge>
                 )}
               </Button>
             )}
-
-            <Tooltip
-              label={!selectedProject ? "Select a project from the top navbar first" : ""}
-              isDisabled={!!selectedProject}
-            >
-              <Button
-                leftIcon={<MdAdd />}
-                colorScheme="brand"
-                size="sm"
-                isDisabled={!selectedProject}
-                onClick={() => { resetModal(); onOpen(); }}
-              >
+            <Tooltip label={!selectedProject ? "Select a project from the top navbar first" : ""} isDisabled={!!selectedProject}>
+              <Button leftIcon={<MdAdd />} colorScheme="brand" size="sm"
+                isDisabled={!selectedProject} onClick={() => { resetModal(); onOpen(); }}>
                 New Document
               </Button>
             </Tooltip>
@@ -472,31 +496,25 @@ export default function DocumentsPage() {
         </Flex>
       </Box>
 
-      {/* ── NO PROJECT BANNER ────────────────────────────────────────────── */}
+      {/* ── NO PROJECT BANNER ───────────────────────────────────────────── */}
       {!selectedProject && (
         <Box mb={4} p={4} bg={warnBg} borderRadius="xl" border={`1px solid ${warnBdr}`}>
           <Flex align="center" gap={3}>
             <Text fontSize="xl">📁</Text>
             <Box>
-              <Text fontWeight="600" fontSize="sm" color={textColor}>
-                Select a project to create documents
-              </Text>
-              <Text fontSize="xs" color={subColor}>
-                Use the project dropdown in the top navbar. You can still view all documents below.
-              </Text>
+              <Text fontWeight="600" fontSize="sm" color={textColor}>Select a project to create documents</Text>
+              <Text fontSize="xs" color={subColor}>Use the project dropdown in the top navbar. You can still view all documents below.</Text>
             </Box>
           </Flex>
         </Box>
       )}
 
-      {/* ── EMPTY STATE ──────────────────────────────────────────────────── */}
+      {/* ── EMPTY STATE ─────────────────────────────────────────────────── */}
       {allDisplayDocs.length === 0 && (
         <Flex direction="column" align="center" py={20} color={subColor}>
           <MdDescription size={48} />
           <Text fontSize="sm" mt={2}>
-            {selectedProject
-              ? `No documents for ${selectedProject.name}`
-              : "No documents found"}
+            {selectedProject ? `No documents for ${selectedProject.name}` : "No documents found"}
           </Text>
           {selectedProject && (
             <Button mt={4} colorScheme="brand" size="sm" leftIcon={<MdAdd />}
@@ -507,29 +525,24 @@ export default function DocumentsPage() {
         </Flex>
       )}
 
-      {/* ── TABLE ────────────────────────────────────────────────────────── */}
+      {/* ── TABLE ───────────────────────────────────────────────────────── */}
       {allDisplayDocs.length > 0 && (
-        <Box bg={cardBg} borderRadius="xl" boxShadow="md"
-          border={`1px solid ${borderColor}`} overflow="hidden">
+        <Box bg={cardBg} borderRadius="xl" boxShadow="md" border={`1px solid ${borderColor}`} overflow="hidden">
           <TableContainer>
             <Table variant="simple" size="sm">
               <Thead bg={theadBg}>
                 <Tr>
-                  {["#", "Title", "Description", "Status", "Assignee", "Created By",
-                    "Project", "File", "Date", "Actions"].map(h => (
-                    <Th key={h} color={theadColor} fontSize="xs" py={3}
-                      textAlign={h === "Actions" ? "right" : "left"}>
-                      {h}
-                    </Th>
+                  {["#", "Title", "Description", "Status", "Assignee", "Created By", "Project", "File", "Date", "Actions"].map(h => (
+                    <Th key={h} color={theadColor} fontSize="xs" py={3} textAlign={h === "Actions" ? "right" : "left"}>{h}</Th>
                   ))}
                 </Tr>
               </Thead>
               <Tbody>
                 {paginated.map((doc, idx) => {
-                  const canSeeThisDoc  = canReadDoc(doc);
-                  const isHighlighted  = doc._id === highlightedDocId;
+                  const canSeeThisDoc = canReadDoc(doc);
+                  const isHighlighted = doc._id === highlightedDocId;
 
-                  // ── LOCKED ROW ──────────────────────────────────────────
+                  // Locked row
                   if (!canSeeThisDoc) {
                     return (
                       <Tr key={doc._id} bg={lockedBg} opacity={0.75}>
@@ -537,77 +550,47 @@ export default function DocumentsPage() {
                         <Td py={3}>
                           <Flex align="center" gap={2}>
                             <MdLock size={14} color="#a0aec0" />
-                            <Text fontSize="sm" color={subColor} fontWeight="600">
-                              Restricted Document
-                            </Text>
+                            <Text fontSize="sm" color={subColor} fontWeight="600">Restricted Document</Text>
                           </Flex>
                         </Td>
                         <Td><Text fontSize="xs" color={subColor}>—</Text></Td>
-                        <Td>
-                          <Badge colorScheme="gray" borderRadius="full" fontSize="xs" px={2}>
-                            restricted
-                          </Badge>
-                        </Td>
+                        <Td><Badge colorScheme="gray" borderRadius="full" fontSize="xs" px={2}>restricted</Badge></Td>
                         <Td><Text fontSize="xs" color={subColor}>—</Text></Td>
                         <Td><Text fontSize="xs" color={subColor}>—</Text></Td>
-                        <Td>
-                          <Text fontSize="xs" color={subColor}>
-                            {doc.project?.name ? `📁 ${doc.project.name}` : "—"}
-                          </Text>
-                        </Td>
+                        <Td><Text fontSize="xs" color={subColor}>{doc.project?.name ? `📁 ${doc.project.name}` : "—"}</Text></Td>
                         <Td><Text fontSize="xs" color={subColor}>—</Text></Td>
                         <Td><Text fontSize="xs" color={subColor}>—</Text></Td>
                         <Td textAlign="right">
                           <Tooltip label="Request access">
-                            <IconButton
-                              icon={<MdLock />}
-                              size="xs"
-                              colorScheme="orange"
-                              aria-label="Request Access"
-                              onClick={() => { setAccessDoc(doc); onAccessOpen(); }}
-                            />
+                            <IconButton icon={<MdLock />} size="xs" colorScheme="orange"
+                              aria-label="Request Access" onClick={() => { setAccessDoc(doc); onAccessOpen(); }} />
                           </Tooltip>
                         </Td>
                       </Tr>
                     );
                   }
 
-                  // ── VISIBLE ROW ─────────────────────────────────────────
+                  // Visible row
                   return (
-                    <Tr
-                      key={doc._id}
-                      id={`doc-row-${doc._id}`}
+                    <Tr key={doc._id} id={`doc-row-${doc._id}`}
                       bg={isHighlighted ? highlightBg : idx % 2 === 0 ? rowEven : rowOdd}
-                      border={isHighlighted ? `2px solid` : undefined}
+                      border={isHighlighted ? "2px solid" : undefined}
                       borderColor={isHighlighted ? highlightBdr : undefined}
-                      _hover={{ bg: rowHover }}
-                      transition="background 0.15s"
-                    >
+                      _hover={{ bg: rowHover }} transition="background 0.15s">
                       <Td color={subColor} fontSize="xs">{startIndex + idx + 1}</Td>
                       <Td py={3} maxW="150px">
                         <Flex align="center" gap={2}>
                           <MdDescription size={14} color="#3b82f6" />
-                          <Text fontWeight="600" fontSize="sm" color={textColor} noOfLines={1}>
-                            {doc.title}
-                          </Text>
-                          {/* ✅ "New Access" badge for email link arrivals */}
+                          <Text fontWeight="600" fontSize="sm" color={textColor} noOfLines={1}>{doc.title}</Text>
                           {isHighlighted && (
-                            <Badge colorScheme="green" fontSize="9px" borderRadius="full" px={1.5}>
-                              ✓ Access Granted
-                            </Badge>
+                            <Badge colorScheme="green" fontSize="9px" borderRadius="full" px={1.5}>✓ Access Granted</Badge>
                           )}
                         </Flex>
                       </Td>
-                      <Td maxW="160px">
-                        <Text fontSize="xs" color={subColor} noOfLines={2}>
-                          {doc.description}
-                        </Text>
-                      </Td>
+                      <Td maxW="160px"><Text fontSize="xs" color={subColor} noOfLines={2}>{doc.description}</Text></Td>
                       <Td>
-                        <Badge
-                          colorScheme={statusColors[doc.status] || "gray"}
-                          borderRadius="full" fontSize="xs" px={2} textTransform="capitalize"
-                        >
+                        <Badge colorScheme={statusColors[doc.status] || "gray"}
+                          borderRadius="full" fontSize="xs" px={2} textTransform="capitalize">
                           {doc.status || "draft"}
                         </Badge>
                       </Td>
@@ -615,63 +598,36 @@ export default function DocumentsPage() {
                         {doc.assignee?.name ? (
                           <Flex align="center" gap={2}>
                             <Avatar name={doc.assignee.name} size="xs" bg="brand.500" color="white" />
-                            <Text fontSize="xs" color={textColor} whiteSpace="nowrap">
-                              {doc.assignee.name}
-                            </Text>
+                            <Text fontSize="xs" color={textColor} whiteSpace="nowrap">{doc.assignee.name}</Text>
                           </Flex>
-                        ) : (
-                          <Text fontSize="xs" color={subColor}>—</Text>
-                        )}
+                        ) : <Text fontSize="xs" color={subColor}>—</Text>}
                       </Td>
                       <Td>
                         <Flex align="center" gap={2}>
                           <Avatar name={doc.createdBy?.name} size="xs" bg="purple.400" color="white" />
                           <Box>
-                            <Text fontSize="xs" color={textColor} whiteSpace="nowrap">
-                              {doc.createdBy?.name || "—"}
-                            </Text>
-                            {isCreatorOfDoc(doc) && (
-                              <Badge colorScheme="purple" fontSize="9px" borderRadius="full">
-                                you
-                              </Badge>
-                            )}
+                            <Text fontSize="xs" color={textColor} whiteSpace="nowrap">{doc.createdBy?.name || "—"}</Text>
+                            {isCreatorOfDoc(doc) && <Badge colorScheme="purple" fontSize="9px" borderRadius="full">you</Badge>}
                           </Box>
                         </Flex>
                       </Td>
-                      <Td>
-                        <Text fontSize="xs" color={subColor} noOfLines={1}>
-                          {doc.project?.name ? `📁 ${doc.project.name}` : "—"}
-                        </Text>
-                      </Td>
+                      <Td><Text fontSize="xs" color={subColor} noOfLines={1}>{doc.project?.name ? `📁 ${doc.project.name}` : "—"}</Text></Td>
                       <Td>
                         {doc.file?.url ? (
                           <Tooltip label={`${doc.file.originalName} (${fmtSize(doc.file.size)})`}>
-                            <Button
-                              as="a"
+                            <Button as="a"
                               href={`${import.meta.env.VITE_API_URL || "https://w2ml73xv-5000.inc1.devtunnels.ms"}${doc.file.url}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              size="xs"
-                              colorScheme="green"
-                              variant="outline"
-                              leftIcon={
-                                <span style={{ fontSize: "12px" }}>
-                                  {fileIcon(doc.file.mimetype)}
-                                </span>
-                              }
-                            >
+                              target="_blank" rel="noopener noreferrer"
+                              size="xs" colorScheme="green" variant="outline"
+                              leftIcon={<span style={{ fontSize: "12px" }}>{fileIcon(doc.file.mimetype)}</span>}>
                               <MdDownload size={12} />
                             </Button>
                           </Tooltip>
-                        ) : (
-                          <Text fontSize="xs" color={subColor}>—</Text>
-                        )}
+                        ) : <Text fontSize="xs" color={subColor}>—</Text>}
                       </Td>
                       <Td>
                         <Text fontSize="xs" color={subColor} whiteSpace="nowrap">
-                          {new Date(doc.createdAt).toLocaleDateString("en-IN", {
-                            day: "numeric", month: "short", year: "numeric",
-                          })}
+                          {new Date(doc.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
                         </Text>
                       </Td>
                       <Td textAlign="right">
@@ -679,8 +635,7 @@ export default function DocumentsPage() {
                           {(canUpdate || isCreatorOfDoc(doc)) && (
                             <Tooltip label="Edit">
                               <IconButton icon={<MdEdit />} size="xs" colorScheme="brand"
-                                variant="ghost" aria-label="Edit"
-                                onClick={() => handleOpen(doc)} />
+                                variant="ghost" aria-label="Edit" onClick={() => handleOpen(doc)} />
                             </Tooltip>
                           )}
                           {canDelete && (
@@ -699,9 +654,8 @@ export default function DocumentsPage() {
             </Table>
           </TableContainer>
 
-          {/* ── PAGINATION ── */}
-          <Flex px={4} py={3} justify="space-between" align="center"
-            borderTop={`1px solid ${borderColor}`}>
+          {/* ── PAGINATION ─────────────────────────────────────────────── */}
+          <Flex px={4} py={3} justify="space-between" align="center" borderTop={`1px solid ${borderColor}`}>
             <Text fontSize="sm" color={subColor}>
               {`${startIndex + 1}–${Math.min(startIndex + pageSize, allDisplayDocs.length)} of ${allDisplayDocs.length}`}
             </Text>
@@ -723,41 +677,91 @@ export default function DocumentsPage() {
         </Box>
       )}
 
-      {/* ── MODAL: Create / Edit ──────────────────────────────────────────── */}
-      <Modal isOpen={isOpen} onClose={() => { onClose(); resetModal(); }} isCentered size="lg">
+      {/* ══════════════════════════════════════════════════════════════════
+          MODAL: Create / Edit
+      ══════════════════════════════════════════════════════════════════ */}
+      <Modal isOpen={isOpen} onClose={() => { onClose(); resetModal(); }}
+        isCentered size="4xl" scrollBehavior="inside">
         <ModalOverlay />
         <ModalContent bg={cardBg}>
-          <ModalHeader color={textColor}>
-            <Flex align="center" gap={2}>
-              <MdDescription />
-              {editingId ? "Edit Document" : "New Document"}
+
+          {/* ── Modal Header with auto-save toggle ── */}
+          <ModalHeader color={textColor} borderBottom={`1px solid ${borderColor}`} pb={3}>
+            <Flex align="center" justify="space-between" w="100%">
+              <Flex align="center" gap={2}>
+                <MdDescription />
+                <Text>{editingId ? "Edit Document" : "New Document"}</Text>
+              </Flex>
+
+              {/* ✅ Auto-save toggle — edit mode only */}
+              {editingId && (
+                <Flex align="center" gap={3} mr={8}>
+                  {autoSaving && (
+                    <Flex align="center" gap={1}>
+                      <Spinner size="xs" color="green.400" />
+                      <Text fontSize="xs" color="green.400" fontWeight="500">Saving…</Text>
+                    </Flex>
+                  )}
+                  {!autoSaving && lastSaved && (
+                    <Text fontSize="xs" color={subColor}>
+                      ✓ {lastSaved.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+                    </Text>
+                  )}
+                  <HStack spacing={2}
+                    bg={autoSave ? autoSaveBg : "transparent"}
+                    border={`1px solid ${autoSave ? autoSaveBdr : "transparent"}`}
+                    borderRadius="full" px={3} py={1} transition="all 0.2s">
+                    <Text fontSize="xs" color={autoSave ? "green.600" : subColor} fontWeight="600">
+                      Auto-save
+                    </Text>
+                    <Switch size="sm" isChecked={autoSave} colorScheme="green"
+                      onChange={e => {
+                        setAutoSave(e.target.checked);
+                        if (!e.target.checked && autoSaveTimer.current) {
+                          clearTimeout(autoSaveTimer.current);
+                        }
+                      }} />
+                  </HStack>
+                </Flex>
+              )}
             </Flex>
           </ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
+
+          <ModalCloseButton top={3} />
+
+          <ModalBody py={5}>
             <VStack spacing={4}>
 
+              {/* Project banner */}
               {selectedProject && (
-                <Box w="100%" p={3} bg={projBlueBg} borderRadius="lg"
-                  border={`1px solid ${projBlueBdr}`}>
-                  <Text fontSize="xs" color={projBlueClr} fontWeight="600">
-                    📁 Project: {selectedProject.name}
-                  </Text>
+                <Box w="100%" p={3} bg={projBlueBg} borderRadius="lg" border={`1px solid ${projBlueBdr}`}>
+                  <Text fontSize="xs" color={projBlueClr} fontWeight="600">📁 Project: {selectedProject.name}</Text>
                 </Box>
               )}
 
+              {/* Creator info */}
               {!editingId && (
-                <Box w="100%" p={3} bg={cardBg} borderRadius="lg"
-                  border={`1px solid ${borderColor}`}>
+                <Box w="100%" p={3} bg={cardBg} borderRadius="lg" border={`1px solid ${borderColor}`}>
                   <Flex align="center" gap={2}>
                     <MdPerson size={14} color="#805ad5" />
-                    <Text fontSize="xs" color={subColor}>
-                      Creating as: <strong style={{ color: "inherit" }}>{user?.name}</strong>
+                    <Text fontSize="xs" color={subColor}>Creating as: <strong>{user?.name}</strong></Text>
+                  </Flex>
+                </Box>
+              )}
+
+              {/* Auto-save active notice */}
+              {autoSave && editingId && (
+                <Box w="100%" p={3} bg={autoSaveBg} borderRadius="lg" border={`1px solid ${autoSaveBdr}`}>
+                  <Flex align="center" gap={2}>
+                    <MdSave size={14} color="#38a169" />
+                    <Text fontSize="xs" color="green.600" fontWeight="500">
+                      Auto-save is ON — changes save every 2 seconds. Save button is hidden.
                     </Text>
                   </Flex>
                 </Box>
               )}
 
+              {/* Title */}
               <FormControl isInvalid={!!errors.title}>
                 <FormLabel fontSize="sm" color={textColor}>Title *</FormLabel>
                 <Input placeholder="Document title" value={form.title}
@@ -769,9 +773,10 @@ export default function DocumentsPage() {
                 <FormErrorMessage>{errors.title}</FormErrorMessage>
               </FormControl>
 
+              {/* Description */}
               <FormControl isInvalid={!!errors.description}>
                 <FormLabel fontSize="sm" color={textColor}>Description *</FormLabel>
-                <Textarea placeholder="Describe the document..." value={form.description} rows={3}
+                <Textarea placeholder="Describe the document…" value={form.description} rows={3}
                   onChange={e => {
                     if (e.target.value && !SAFE_TEXT.test(e.target.value)) return;
                     setForm(p => ({ ...p, description: e.target.value }));
@@ -780,11 +785,11 @@ export default function DocumentsPage() {
                 <FormErrorMessage>{errors.description}</FormErrorMessage>
               </FormControl>
 
+              {/* Status + Assignee */}
               <Grid templateColumns="repeat(2, 1fr)" gap={4} w="100%">
                 <FormControl>
                   <FormLabel fontSize="sm" color={textColor}>Status</FormLabel>
-                  <Select value={form.status}
-                    onChange={e => setForm(p => ({ ...p, status: e.target.value }))}>
+                  <Select value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))}>
                     <option value="draft">Draft</option>
                     <option value="active">Active</option>
                     <option value="review">In Review</option>
@@ -817,9 +822,7 @@ export default function DocumentsPage() {
                       <Flex align="center" gap={2}>
                         <Text fontSize="lg">{fileIcon(existingFile.mimetype)}</Text>
                         <Box>
-                          <Text fontSize="xs" fontWeight="600" color={fileClr} noOfLines={1}>
-                            {existingFile.originalName}
-                          </Text>
+                          <Text fontSize="xs" fontWeight="600" color={fileClr} noOfLines={1}>{existingFile.originalName}</Text>
                           <Text fontSize="xs" color={subColor}>{fmtSize(existingFile.size)}</Text>
                         </Box>
                       </Flex>
@@ -837,28 +840,19 @@ export default function DocumentsPage() {
                       <Flex align="center" gap={2}>
                         <Text fontSize="lg">{fileIcon(selectedFile.type)}</Text>
                         <Box>
-                          <Text fontSize="xs" fontWeight="600" color={fileClr} noOfLines={1}>
-                            {selectedFile.name}
-                          </Text>
+                          <Text fontSize="xs" fontWeight="600" color={fileClr} noOfLines={1}>{selectedFile.name}</Text>
                           <Text fontSize="xs" color={subColor}>{fmtSize(selectedFile.size)}</Text>
                         </Box>
                       </Flex>
                       <Tooltip label="Remove selected file">
                         <IconButton icon={<MdClear />} size="xs" colorScheme="red" variant="ghost"
-                          aria-label="Remove"
-                          onClick={() => {
-                            setSelectedFile(null);
-                            if (fileInputRef.current) fileInputRef.current.value = "";
-                          }} />
+                          aria-label="Remove" onClick={() => { setSelectedFile(null); if (fileInputRef.current) fileInputRef.current.value = ""; }} />
                       </Tooltip>
                     </Flex>
                   </Box>
                 )}
 
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  style={{ display: "none" }}
+                <input ref={fileInputRef} type="file" style={{ display: "none" }}
                   accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.jpg,.jpeg,.png,.gif,.webp"
                   onChange={e => {
                     const file = e.target.files?.[0];
@@ -870,25 +864,63 @@ export default function DocumentsPage() {
                     setSelectedFile(file);
                     setRemoveFile(false);
                     setExistingFile(null);
-                  }}
-                />
+                  }} />
                 <Button size="sm" variant="outline" leftIcon={<MdAttachFile />}
-                  onClick={() => fileInputRef.current?.click()}
-                  isDisabled={!!selectedFile}>
-                  {selectedFile
-                    ? "File selected"
-                    : existingFile && !removeFile
-                      ? "Replace file"
-                      : "Choose file"}
+                  onClick={() => fileInputRef.current?.click()} isDisabled={!!selectedFile}>
+                  {selectedFile ? "File selected" : existingFile && !removeFile ? "Replace file" : "Choose file"}
                 </Button>
-                <Text fontSize="xs" color={subColor} mt={1}>
-                  Supported: PDF, Word, Excel, PowerPoint, TXT, Images
-                </Text>
+                <Text fontSize="xs" color={subColor} mt={1}>Supported: PDF, Word, Excel, PowerPoint, TXT, Images</Text>
               </FormControl>
 
+              {/* ✅ React-Quill Rich Text Editor */}
+              <FormControl>
+                <FormLabel fontSize="sm" color={textColor}>
+                  Document Content{" "}
+                  <Text as="span" color={subColor} fontWeight="400">(optional)</Text>
+                </FormLabel>
+                <Box
+                  border="1px solid"
+                  borderColor={borderColor}
+                  borderRadius="md"
+                  overflow="hidden"
+                  sx={{
+                    ".ql-toolbar": {
+                      borderTop: "none",
+                      borderLeft: "none",
+                      borderRight: "none",
+                      borderBottom: `1px solid ${borderColor}`,
+                      background: cardBg,
+                    },
+                    ".ql-container": {
+                      border: "none",
+                      fontSize: "14px",
+                    },
+                    ".ql-editor": {
+                      minHeight: "200px",
+                      maxHeight: "380px",
+                      overflowY: "auto",
+                      color: textColor,
+                    },
+                    ".ql-editor.ql-blank::before": {
+                      color: subColor,
+                      fontStyle: "normal",
+                    },
+                  }}
+                >
+                  <ReactQuill
+                    theme="snow"
+                    value={editorContent}
+                    onChange={setEditorContent}
+                    modules={QUILL_MODULES}
+                    formats={QUILL_FORMATS}
+                    placeholder="Write the document content here…"
+                  />
+                </Box>
+              </FormControl>
+
+              {/* Assignee email notice */}
               {form.assignee && (
-                <Box w="100%" p={3} bg={projBlueBg} borderRadius="lg"
-                  border={`1px solid ${projBlueBdr}`}>
+                <Box w="100%" p={3} bg={projBlueBg} borderRadius="lg" border={`1px solid ${projBlueBdr}`}>
                   <Flex align="center" gap={2}>
                     <MdMail size={14} color="#3b82f6" />
                     <Text fontSize="xs" color={projBlueClr}>
@@ -899,13 +931,22 @@ export default function DocumentsPage() {
               )}
             </VStack>
           </ModalBody>
-          <ModalFooter>
-            <Button variant="ghost" mr={3} onClick={() => { onClose(); resetModal(); }}>
+
+          {/* ── Footer ── */}
+          <ModalFooter borderTop={`1px solid ${borderColor}`} gap={2}>
+            {/* ✅ CANCEL — always visible */}
+            <Button variant="ghost" onClick={() => { onClose(); resetModal(); }}>
               Cancel
             </Button>
-            <Button colorScheme="brand" isLoading={saving} onClick={handleSave}>
-              {editingId ? "Update" : "Create"} Document
-            </Button>
+
+            {/* ✅ SAVE — hidden only when auto-save is ON in edit mode */}
+            {(!autoSave || !editingId) && (
+              <Button colorScheme="brand" leftIcon={<MdSave />}
+                isLoading={saving} loadingText={editingId ? "Updating…" : "Creating…"}
+                onClick={handleSave}>
+                {editingId ? "Update Document" : "Create Document"}
+              </Button>
+            )}
           </ModalFooter>
         </ModalContent>
       </Modal>
@@ -915,85 +956,64 @@ export default function DocumentsPage() {
         <ModalOverlay />
         <ModalContent bg={cardBg} borderRadius="xl">
           <ModalHeader fontSize="md" color={textColor}>Delete Document</ModalHeader>
-          <ModalBody fontSize="sm" color={subColor}>
-            Are you sure? This action cannot be undone.
-          </ModalBody>
+          <ModalBody fontSize="sm" color={subColor}>Are you sure? This action cannot be undone.</ModalBody>
           <ModalFooter gap={2}>
             <Button size="sm" variant="ghost" onClick={onDeleteClose}>Cancel</Button>
             <Button size="sm" colorScheme="red" isLoading={deleting}
-              loadingText="Deleting..." onClick={handleDeleteConfirm}>
-              Delete
-            </Button>
+              loadingText="Deleting…" onClick={handleDeleteConfirm}>Delete</Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
 
-      {/* ── MODAL: Request Access to specific doc ────────────────────────── */}
+      {/* ── MODAL: Request Access ────────────────────────────────────────── */}
       <Modal isOpen={isAccessOpen}
         onClose={() => { onAccessClose(); setAccessDoc(null); setAccessMessage(""); }}
         isCentered size="md">
         <ModalOverlay />
         <ModalContent bg={cardBg}>
-          <ModalHeader color={textColor}>
-            <Flex align="center" gap={2}><MdLock /> Request Document Access</Flex>
-          </ModalHeader>
+          <ModalHeader color={textColor}><Flex align="center" gap={2}><MdLock /> Request Document Access</Flex></ModalHeader>
           <ModalCloseButton />
           <ModalBody>
             <VStack spacing={4}>
               <Box w="100%" p={4} bg={reqBg} borderRadius="lg" border={`1px solid ${reqBdr}`}>
-                <Text fontSize="sm" fontWeight="600" color={textColor} mb={1}>
-                  🔒 Restricted Document
-                </Text>
-                <Text fontSize="xs" color={subColor}>
-                  You are not assigned to this document. The admin will be notified via email.
-                </Text>
+                <Text fontSize="sm" fontWeight="600" color={textColor} mb={1}>🔒 Restricted Document</Text>
+                <Text fontSize="xs" color={subColor}>You are not assigned to this document. The admin will be notified via email.</Text>
               </Box>
               <FormControl>
                 <FormLabel fontSize="sm" color={textColor}>
                   Reason <Text as="span" color={subColor}>(optional)</Text>
                 </FormLabel>
-                <Textarea placeholder="Explain why you need access..."
-                  value={accessMessage} onChange={e => setAccessMessage(e.target.value)} rows={3} />
+                <Textarea placeholder="Explain why you need access…" value={accessMessage}
+                  onChange={e => setAccessMessage(e.target.value)} rows={3} />
               </FormControl>
             </VStack>
           </ModalBody>
           <ModalFooter>
             <Button variant="ghost" mr={3}
-              onClick={() => { onAccessClose(); setAccessDoc(null); setAccessMessage(""); }}>
-              Cancel
-            </Button>
+              onClick={() => { onAccessClose(); setAccessDoc(null); setAccessMessage(""); }}>Cancel</Button>
             <Button colorScheme="orange" leftIcon={<MdMail />}
-              isLoading={accessSending} onClick={handleRequestAccess}>
-              Send Request
-            </Button>
+              isLoading={accessSending} onClick={handleRequestAccess}>Send Request</Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
 
-      {/* ── MODAL: Module Access Request ─────────────────────────────────── */}
+      {/* ── MODAL: Module Access ─────────────────────────────────────────── */}
       <Modal isOpen={isModuleOpen} onClose={onModuleClose} isCentered size="md">
         <ModalOverlay />
         <ModalContent bg={cardBg}>
-          <ModalHeader color={textColor}>
-            <Flex align="center" gap={2}><MdLock /> Request Documents Access</Flex>
-          </ModalHeader>
+          <ModalHeader color={textColor}><Flex align="center" gap={2}><MdLock /> Request Documents Access</Flex></ModalHeader>
           <ModalCloseButton />
           <ModalBody>
             <VStack spacing={4}>
               <Box w="100%" p={4} bg={reqBg} borderRadius="lg" border={`1px solid ${reqBdr}`}>
-                <Text fontSize="sm" fontWeight="600" color={textColor} mb={1}>
-                  📄 Documents Module
-                </Text>
-                <Text fontSize="xs" color={subColor}>
-                  Your request will be sent to the admin via email.
-                </Text>
+                <Text fontSize="sm" fontWeight="600" color={textColor} mb={1}>📄 Documents Module</Text>
+                <Text fontSize="xs" color={subColor}>Your request will be sent to the admin via email.</Text>
               </Box>
               <FormControl>
                 <FormLabel fontSize="sm" color={textColor}>
                   Reason <Text as="span" color={subColor}>(optional)</Text>
                 </FormLabel>
-                <Textarea placeholder="Explain why you need access..."
-                  value={moduleAccessMessage}
+                <Textarea placeholder="Explain why you need access…" value={moduleAccessMessage}
                   onChange={e => setModuleAccessMessage(e.target.value)} rows={3} />
               </FormControl>
             </VStack>
@@ -1001,9 +1021,7 @@ export default function DocumentsPage() {
           <ModalFooter>
             <Button variant="ghost" mr={3} onClick={onModuleClose}>Cancel</Button>
             <Button colorScheme="orange" leftIcon={<MdMail />}
-              isLoading={moduleAccessSending} onClick={handleModuleAccessRequest}>
-              Send Request
-            </Button>
+              isLoading={moduleAccessSending} onClick={handleModuleAccessRequest}>Send Request</Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
@@ -1015,9 +1033,7 @@ export default function DocumentsPage() {
           <ModalHeader color={textColor}>
             <Flex align="center" gap={2}>
               <MdLockOpen /> Pending Access Requests
-              {pendingCount > 0 && (
-                <Badge colorScheme="red" borderRadius="full" px={2}>{pendingCount}</Badge>
-              )}
+              {pendingCount > 0 && <Badge colorScheme="red" borderRadius="full" px={2}>{pendingCount}</Badge>}
             </Flex>
           </ModalHeader>
           <ModalCloseButton />
@@ -1030,15 +1046,12 @@ export default function DocumentsPage() {
             ) : (
               <VStack spacing={3} align="stretch">
                 {pendingRequests.map(req => (
-                  <Box key={req._id} p={4} borderRadius="lg"
-                    border={`1px solid ${reqBdr}`} bg={reqBg}>
+                  <Box key={req._id} p={4} borderRadius="lg" border={`1px solid ${reqBdr}`} bg={reqBg}>
                     <Flex justify="space-between" align="flex-start">
                       <Box flex={1}>
                         <Flex align="center" gap={2} mb={1}>
                           <Avatar name={req.user?.name} size="xs" bg="brand.500" color="white" />
-                          <Text fontWeight="600" fontSize="sm" color={textColor}>
-                            {req.user?.name}
-                          </Text>
+                          <Text fontWeight="600" fontSize="sm" color={textColor}>{req.user?.name}</Text>
                           <Badge colorScheme="gray" fontSize="xs">{req.user?.email}</Badge>
                         </Flex>
                         <Text fontSize="xs" color={subColor} mb={1}>
@@ -1053,14 +1066,12 @@ export default function DocumentsPage() {
                       </Box>
                       <HStack ml={4}>
                         <Tooltip label="Approve — emails user">
-                          <IconButton icon={<MdCheck />} size="sm" colorScheme="green"
-                            aria-label="Approve"
+                          <IconButton icon={<MdCheck />} size="sm" colorScheme="green" aria-label="Approve"
                             onClick={() => handleGrantAccess(req._id, true)} />
                         </Tooltip>
                         <Tooltip label="Deny — emails user">
-                          <IconButton icon={<MdClose />} size="sm" colorScheme="red"
-                            variant="outline" aria-label="Deny"
-                            onClick={() => handleGrantAccess(req._id, false)} />
+                          <IconButton icon={<MdClose />} size="sm" colorScheme="red" variant="outline"
+                            aria-label="Deny" onClick={() => handleGrantAccess(req._id, false)} />
                         </Tooltip>
                       </HStack>
                     </Flex>
@@ -1075,44 +1086,34 @@ export default function DocumentsPage() {
         </ModalContent>
       </Modal>
 
-      {/* ── MODAL: Single Request Popup (from email link) ─────────────────── */}
+      {/* ── MODAL: Single Request (email link) ──────────────────────────── */}
       <Modal isOpen={isFocusOpen} onClose={onFocusClose} isCentered size="md">
         <ModalOverlay />
         <ModalContent bg={cardBg}>
-          <ModalHeader color={textColor}>
-            <Flex align="center" gap={2}>
-              <MdLockOpen /> Access Request
-            </Flex>
-          </ModalHeader>
+          <ModalHeader color={textColor}><Flex align="center" gap={2}><MdLockOpen /> Access Request</Flex></ModalHeader>
           <ModalCloseButton />
           <ModalBody>
             {focusedRequest ? (
               <Box p={4} borderRadius="lg" border={`1px solid ${reqBdr}`} bg={reqBg}>
-                <Flex justify="space-between" align="flex-start">
-                  <Box flex={1}>
-                    <Flex align="center" gap={2} mb={2}>
-                      <Avatar name={focusedRequest.user?.name} size="sm" bg="brand.500" color="white" />
-                      <Box>
-                        <Text fontWeight="700" fontSize="sm" color={textColor}>
-                          {focusedRequest.user?.name}
-                        </Text>
-                        <Badge colorScheme="gray" fontSize="xs">{focusedRequest.user?.email}</Badge>
-                      </Box>
-                    </Flex>
-                    <Text fontSize="sm" color={subColor} mb={1}>
-                      Wants access to: <strong style={{ color: textColor }}>{focusedRequest.document?.title}</strong>
-                    </Text>
-                    {focusedRequest.document?.project?.name && (
-                      <Text fontSize="xs" color={subColor} mb={2}>📁 {focusedRequest.document.project.name}</Text>
-                    )}
-                    {focusedRequest.message && (
-                      <Box mt={2} p={3} bg={cardBg} borderRadius="md" border={`1px solid ${borderColor}`}>
-                        <Text fontSize="xs" color={subColor} fontWeight="600" mb={1}>Reason:</Text>
-                        <Text fontSize="sm" color={textColor}>"{focusedRequest.message}"</Text>
-                      </Box>
-                    )}
+                <Flex align="center" gap={2} mb={2}>
+                  <Avatar name={focusedRequest.user?.name} size="sm" bg="brand.500" color="white" />
+                  <Box>
+                    <Text fontWeight="700" fontSize="sm" color={textColor}>{focusedRequest.user?.name}</Text>
+                    <Badge colorScheme="gray" fontSize="xs">{focusedRequest.user?.email}</Badge>
                   </Box>
                 </Flex>
+                <Text fontSize="sm" color={subColor} mb={1}>
+                  Wants access to: <strong style={{ color: textColor }}>{focusedRequest.document?.title}</strong>
+                </Text>
+                {focusedRequest.document?.project?.name && (
+                  <Text fontSize="xs" color={subColor} mb={2}>📁 {focusedRequest.document.project.name}</Text>
+                )}
+                {focusedRequest.message && (
+                  <Box mt={2} p={3} bg={cardBg} borderRadius="md" border={`1px solid ${borderColor}`}>
+                    <Text fontSize="xs" color={subColor} fontWeight="600" mb={1}>Reason:</Text>
+                    <Text fontSize="sm" color={textColor}>"{focusedRequest.message}"</Text>
+                  </Box>
+                )}
               </Box>
             ) : (
               <Flex justify="center" py={6}><Spinner color="brand.500" /></Flex>
@@ -1120,22 +1121,12 @@ export default function DocumentsPage() {
           </ModalBody>
           <ModalFooter gap={3}>
             <Button variant="ghost" onClick={onFocusClose}>Cancel</Button>
-            <Button
-              colorScheme="red" variant="outline" leftIcon={<MdClose />}
-              onClick={async () => {
-                await handleGrantAccess(focusedRequest._id, false);
-                onFocusClose();
-              }}
-            >
+            <Button colorScheme="red" variant="outline" leftIcon={<MdClose />}
+              onClick={async () => { await handleGrantAccess(focusedRequest._id, false); onFocusClose(); }}>
               Deny
             </Button>
-            <Button
-              colorScheme="green" leftIcon={<MdCheck />}
-              onClick={async () => {
-                await handleGrantAccess(focusedRequest._id, true);
-                onFocusClose();
-              }}
-            >
+            <Button colorScheme="green" leftIcon={<MdCheck />}
+              onClick={async () => { await handleGrantAccess(focusedRequest._id, true); onFocusClose(); }}>
               Approve
             </Button>
           </ModalFooter>
