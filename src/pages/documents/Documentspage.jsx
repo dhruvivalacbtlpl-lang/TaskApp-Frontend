@@ -1,204 +1,148 @@
 import { useState, useEffect, useRef } from "react";
-import { useSearchParams } from "react-router-dom";
-import ReactQuill from "react-quill";
-import "react-quill/dist/quill.snow.css";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import {
-  Box, Flex, Heading, Text, Badge, Avatar, Spinner,
-  Button, Modal, ModalOverlay, ModalContent, ModalHeader,
-  ModalCloseButton, ModalBody, ModalFooter, useDisclosure,
-  Input, Textarea, Select, useToast, IconButton,
-  Table, Thead, Tbody, Tr, Th, Td, TableContainer,
-  Tooltip, useColorModeValue, FormControl, FormErrorMessage, FormLabel,
-  HStack, VStack, Grid, Switch,
+  Box, Flex, Heading, Text, Badge, Avatar, Spinner, Button,
+  Modal, ModalOverlay, ModalContent, ModalHeader, ModalCloseButton,
+  ModalBody, ModalFooter, useDisclosure, Input, Textarea, Select,
+  useToast, IconButton, Table, Thead, Tbody, Tr, Th, Td,
+  TableContainer, Tooltip, useColorModeValue, FormControl,
+  FormErrorMessage, FormLabel, HStack, VStack, Grid, Switch,
+  Alert, AlertIcon, AlertDescription,
 } from "@chakra-ui/react";
 import {
-  MdAdd, MdDelete, MdEdit, MdDescription,
-  MdLock, MdLockOpen, MdMail, MdCheck, MdClose,
-  MdAttachFile, MdDownload, MdClear, MdPerson, MdSave,
+  MdAdd, MdDelete, MdEdit, MdDescription, MdLock, MdLockOpen,
+  MdMail, MdCheck, MdClose, MdAttachFile, MdDownload, MdClear,
+  MdPerson, MdSave, MdUploadFile, MdNoteAdd, MdVisibility,
+  MdPictureAsPdf, MdTableChart, MdSlideshow, MdImage, MdCode,
+  MdTextFields, MdCloudUpload, MdFolder,
 } from "react-icons/md";
 import api from "../../api";
 import { useAuth } from "../../context/AuthContext";
 
-// ── Constants ─────────────────────────────────────────────────────────────────
-const statusColors = {
-  draft:    "gray",
-  active:   "green",
-  archived: "orange",
-  review:   "purple",
-};
-
-const SAFE_TEXT  = /^[a-zA-Z0-9 .,\-_:!?()\n\r@#/]*$/;
-const empty      = { title: "", description: "", status: "draft", assignee: "" };
-const PAGE_SIZES = [5, 10, 20];
-
-// Quill toolbar config
-const QUILL_MODULES = {
-  toolbar: [
-    [{ header: [1, 2, 3, false] }],
-    ["bold", "italic", "underline", "strike"],
-    [{ list: "ordered" }, { list: "bullet" }],
-    [{ indent: "-1" }, { indent: "+1" }],
-    ["blockquote", "code-block"],
-    ["link"],
-    ["clean"],
-  ],
-};
-const QUILL_FORMATS = [
-  "header", "bold", "italic", "underline", "strike",
-  "list", "bullet", "indent",
-  "blockquote", "code-block", "link",
-];
+// ── Constants ──────────────────────────────────────────────────────────────────
+const statusColors = { draft:"gray", active:"green", archived:"orange", review:"purple" };
+const SAFE_TEXT    = /^[a-zA-Z0-9 .,\-_:!?()\n\r@#/]*$/;
+const emptyUpload  = { title:"", description:"", status:"draft", assignee:"" };
+const PAGE_SIZES   = [5, 10, 20, 50];
 
 const fmtSize = (bytes) => {
   if (!bytes) return "";
   if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1048576) return `${(bytes/1024).toFixed(1)} KB`;
+  return `${(bytes/1048576).toFixed(1)} MB`;
 };
 
-const fileIcon = (mimetype) => {
-  if (!mimetype) return "📎";
-  if (mimetype.includes("pdf"))   return "📕";
-  if (mimetype.includes("word"))  return "📘";
-  if (mimetype.includes("excel") || mimetype.includes("sheet")) return "📗";
-  if (mimetype.includes("image")) return "🖼️";
-  if (mimetype.includes("text"))  return "📄";
-  return "📎";
+// Returns icon + color + label for a document
+const docTypeMeta = (doc) => {
+  if (!doc.file?.mimetype && doc.content) {
+    return { icon: MdTextFields, color: "purple", label: "TEXT", scheme: "purple" };
+  }
+  const m = doc.file?.mimetype || "";
+  if (m.includes("pdf"))                                    return { icon: MdPictureAsPdf,  color: "#e53e3e", label: "PDF",   scheme: "red"    };
+  if (m.includes("word") || m.includes("document"))        return { icon: MdDescription,   color: "#3182ce", label: "DOCX",  scheme: "blue"   };
+  if (m.includes("excel") || m.includes("sheet"))          return { icon: MdTableChart,     color: "#38a169", label: "XLSX",  scheme: "green"  };
+  if (m.includes("presentation") || m.includes("powerpoint")) return { icon: MdSlideshow,  color: "#dd6b20", label: "PPTX",  scheme: "orange" };
+  if (m.includes("image"))                                  return { icon: MdImage,          color: "#805ad5", label: "IMG",   scheme: "purple" };
+  if (m.includes("text"))                                   return { icon: MdTextFields,     color: "#718096", label: "TXT",   scheme: "gray"   };
+  return { icon: MdAttachFile, color: "#718096", label: "FILE", scheme: "gray" };
 };
 
-// ── Component ─────────────────────────────────────────────────────────────────
+// ── Component ──────────────────────────────────────────────────────────────────
 export default function DocumentsPage() {
-  // ── Core state ───────────────────────────────────────────────────────────
-  const [docs, setDocs]           = useState([]);
-  const [loading, setLoading]     = useState(true);
-  const [staff, setStaff]         = useState([]);
-  const [form, setForm]           = useState(empty);
-  const [errors, setErrors]       = useState({});
-  const [editingId, setEditingId] = useState(null);
-  const [saving, setSaving]       = useState(false);
-  const [deleteId, setDeleteId]   = useState(null);
-  const [deleting, setDeleting]   = useState(false);
+  const navigate       = useNavigate();
+  const toast          = useToast();
+  const { user, hasPermission, selectedProject } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  // ── Editor state ─────────────────────────────────────────────────────────
-  const [editorContent, setEditorContent] = useState("");
-  const [autoSave, setAutoSave]           = useState(false);
-  const [autoSaving, setAutoSaving]       = useState(false);
-  const [lastSaved, setLastSaved]         = useState(null);
-  const autoSaveTimer                     = useRef(null);
+  // ── Data ───────────────────────────────────────────────────────────────────
+  const [docs,            setDocs]            = useState([]);
+  const [loading,         setLoading]         = useState(true);
+  const [staff,           setStaff]           = useState([]);
 
-  // ── File state ───────────────────────────────────────────────────────────
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [removeFile, setRemoveFile]     = useState(false);
-  const [existingFile, setExistingFile] = useState(null);
+  // ── Upload modal form ──────────────────────────────────────────────────────
+  const [uploadForm,      setUploadForm]      = useState(emptyUpload);
+  const [uploadErrors,    setUploadErrors]    = useState({});
+  const [uploadSaving,    setUploadSaving]    = useState(false);
+  const [editingId,       setEditingId]       = useState(null);
+  const [dragOver,        setDragOver]        = useState(false);
+
+  // ── File state ─────────────────────────────────────────────────────────────
+  const [selectedFile,    setSelectedFile]    = useState(null);
+  const [removeFile,      setRemoveFile]      = useState(false);
+  const [existingFile,    setExistingFile]    = useState(null);
   const fileInputRef = useRef(null);
 
-  // ── Pagination ───────────────────────────────────────────────────────────
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize]       = useState(5);
+  // ── Delete ─────────────────────────────────────────────────────────────────
+  const [deleteId,        setDeleteId]        = useState(null);
+  const [deleting,        setDeleting]        = useState(false);
 
-  // ── Access request state ─────────────────────────────────────────────────
-  const [accessDoc, setAccessDoc]         = useState(null);
-  const [accessMessage, setAccessMessage] = useState("");
-  const [accessSending, setAccessSending] = useState(false);
-  const [moduleAccessMessage, setModuleAccessMessage] = useState("");
-  const [moduleAccessSending, setModuleAccessSending] = useState(false);
-  const [pendingRequests, setPendingRequests] = useState([]);
-  const [highlightedDocId, setHighlightedDocId] = useState(null);
-  const [focusedRequest, setFocusedRequest]     = useState(null);
+  // ── Pagination ─────────────────────────────────────────────────────────────
+  const [currentPage,     setCurrentPage]     = useState(1);
+  const [pageSize,        setPageSize]        = useState(10);
+  const [searchQuery,     setSearchQuery]     = useState("");
+  const [statusFilter,    setStatusFilter]    = useState("all");
 
-  // ── Modals ───────────────────────────────────────────────────────────────
-  const { isOpen,                 onOpen,          onClose          } = useDisclosure();
+  // ── Access requests ────────────────────────────────────────────────────────
+  const [accessDoc,             setAccessDoc]             = useState(null);
+  const [accessMessage,         setAccessMessage]         = useState("");
+  const [accessSending,         setAccessSending]         = useState(false);
+  const [moduleAccessMessage,   setModuleAccessMessage]   = useState("");
+  const [moduleAccessSending,   setModuleAccessSending]   = useState(false);
+  const [pendingRequests,       setPendingRequests]       = useState([]);
+  const [highlightedDocId,      setHighlightedDocId]      = useState(null);
+  const [focusedRequest,        setFocusedRequest]        = useState(null);
+
+  // ── Modals ─────────────────────────────────────────────────────────────────
+  const { isOpen: isUploadOpen,   onOpen: onUploadOpen,   onClose: onUploadClose   } = useDisclosure();
   const { isOpen: isDeleteOpen,   onOpen: onDeleteOpen,   onClose: onDeleteClose   } = useDisclosure();
   const { isOpen: isAccessOpen,   onOpen: onAccessOpen,   onClose: onAccessClose   } = useDisclosure();
   const { isOpen: isRequestsOpen, onOpen: onRequestsOpen, onClose: onRequestsClose } = useDisclosure();
   const { isOpen: isModuleOpen,   onOpen: onModuleOpen,   onClose: onModuleClose   } = useDisclosure();
   const { isOpen: isFocusOpen,    onOpen: onFocusOpen,    onClose: onFocusClose    } = useDisclosure();
 
-  const toast = useToast();
-  const { user, hasPermission, selectedProject } = useAuth();
-  const [searchParams, setSearchParams] = useSearchParams();
-
   const isAdmin   = user?.role?.name?.toLowerCase() === "admin";
   const canRead   = isAdmin || hasPermission("document_read");
   const canUpdate = isAdmin || hasPermission("document_update");
   const canDelete = isAdmin || hasPermission("document_delete");
 
-  // ── Colors ────────────────────────────────────────────────────────────────
-  const cardBg      = useColorModeValue("white", "gray.800");
-  const theadBg     = useColorModeValue("#bee3f8", "#2a4365");
-  const theadColor  = useColorModeValue("gray.600", "white");
-  const textColor   = useColorModeValue("gray.800", "white");
-  const subColor    = useColorModeValue("gray.400", "gray.400");
-  const rowEven     = useColorModeValue("white", "gray.800");
-  const rowOdd      = useColorModeValue("gray.50", "gray.750");
-  const rowHover    = useColorModeValue("brand.50", "gray.700");
-  const borderColor = useColorModeValue("#e2e8f0", "#4a5568");
-  const iconBg      = useColorModeValue("blue.100", "blue.900");
-  const projBlueBg  = useColorModeValue("brand.50", "brand.900");
-  const projBlueBdr = useColorModeValue("#bee3f8", "#2a4365");
-  const projBlueClr = useColorModeValue("brand.600", "brand.200");
-  const reqBg       = useColorModeValue("orange.50", "orange.900");
-  const reqBdr      = useColorModeValue("orange.200", "orange.600");
-  const lockedBg    = useColorModeValue("gray.50", "gray.700");
-  const fileBg      = useColorModeValue("green.50", "green.900");
-  const fileBdr     = useColorModeValue("green.200", "green.600");
-  const fileClr     = useColorModeValue("green.700", "green.200");
-  const warnBg      = useColorModeValue("yellow.50", "yellow.900");
-  const warnBdr     = useColorModeValue("yellow.300", "yellow.600");
-  const highlightBg = useColorModeValue("green.50", "green.900");
-  const highlightBdr= useColorModeValue("green.300", "green.600");
-  const autoSaveBg  = useColorModeValue("green.50", "green.900");
-  const autoSaveBdr = useColorModeValue("green.200", "green.600");
+  // ── Colors ─────────────────────────────────────────────────────────────────
+  const cardBg       = useColorModeValue("white",      "gray.800");
+  const theadBg      = useColorModeValue("#bee3f8",    "#2a4365");
+  const theadColor   = useColorModeValue("gray.600",   "white");
+  const textColor    = useColorModeValue("gray.800",   "white");
+  const subColor     = useColorModeValue("gray.400",   "gray.400");
+  const rowEven      = useColorModeValue("white",      "gray.800");
+  const rowOdd       = useColorModeValue("gray.50",    "gray.750");
+  const rowHover     = useColorModeValue("blue.50",    "gray.700");
+  const borderColor  = useColorModeValue("#e2e8f0",    "#4a5568");
+  const iconBg       = useColorModeValue("blue.100",   "blue.900");
+  const reqBg        = useColorModeValue("orange.50",  "orange.900");
+  const reqBdr       = useColorModeValue("orange.200", "orange.600");
+  const lockedBg     = useColorModeValue("gray.50",    "gray.700");
+  const fileBg       = useColorModeValue("green.50",   "green.900");
+  const fileBdr      = useColorModeValue("green.200",  "green.600");
+  const fileClr      = useColorModeValue("green.700",  "green.200");
+  const warnBg       = useColorModeValue("yellow.50",  "yellow.900");
+  const warnBdr      = useColorModeValue("yellow.300", "yellow.600");
+  const highlightBg  = useColorModeValue("green.50",   "green.900");
+  const highlightBdr = useColorModeValue("green.300",  "green.600");
+  const dragBg       = useColorModeValue("blue.50",    "blue.900");
+  const dropzoneBg   = useColorModeValue("gray.50",    "gray.700");
+  const dropzoneBdr  = useColorModeValue("gray.200",   "gray.600");
 
-  // ── Initial fetch ────────────────────────────────────────────────────────
-  useEffect(() => { fetchAll(); }, []);
+  // ── Initial fetch ──────────────────────────────────────────────────────────
+  useEffect(() => { fetchAll(); }, []); // eslint-disable-line
 
-  // ── Auto-save effect (edit mode only, debounced 2s) ───────────────────────
-  useEffect(() => {
-    if (!autoSave || !editingId || !isOpen) return;
-
-    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-
-    autoSaveTimer.current = setTimeout(async () => {
-      setAutoSaving(true);
-      try {
-        const fd = new FormData();
-        fd.append("title",       form.title);
-        fd.append("description", form.description);
-        fd.append("status",      form.status);
-        fd.append("content",     editorContent);
-        if (form.assignee)   fd.append("assignee",   form.assignee);
-        if (selectedProject) fd.append("project",    selectedProject._id);
-
-        // ✅ PUT /documents/:id — update only
-        const res = await api.put(`/documents/${editingId}`, fd, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
-        setDocs(prev => prev.map(d => d._id === editingId ? res.data : d));
-        setLastSaved(new Date());
-      } catch {
-        toast({ title: "Auto-save failed", status: "warning", duration: 2000 });
-      } finally {
-        setAutoSaving(false);
-      }
-    }, 2000);
-
-    return () => clearTimeout(autoSaveTimer.current);
-  }, [form, editorContent, autoSave, editingId, isOpen]);
-
-  // ── Email link: single request popup ─────────────────────────────────────
+  // ── Email link: single request popup ──────────────────────────────────────
   useEffect(() => {
     const requestId = searchParams.get("requestId");
     if (!requestId || !isAdmin) return;
-
-    const openFocusedRequest = async () => {
+    const openFocused = async () => {
       try {
         await new Promise(r => setTimeout(r, 1000));
         const found = pendingRequests.find(r => r._id === requestId);
-        if (found) {
-          setFocusedRequest(found);
-          onFocusOpen();
-        } else {
+        if (found) { setFocusedRequest(found); onFocusOpen(); }
+        else {
           const res = await api.get("/documents/access-requests");
           const fresh = (res.data || []).find(r => r._id === requestId);
           if (fresh) { setFocusedRequest(fresh); onFocusOpen(); }
@@ -206,107 +150,102 @@ export default function DocumentsPage() {
       } catch { /* silent */ }
       setSearchParams({}, { replace: true });
     };
+    openFocused();
+  }, [isAdmin, pendingRequests]); // eslint-disable-line
 
-    openFocusedRequest();
-  }, [isAdmin, pendingRequests]);
-
-  // ── Email link: verify token ──────────────────────────────────────────────
+  // ── Email link: verify token ───────────────────────────────────────────────
   useEffect(() => {
     const token = searchParams.get("token");
     const docId = searchParams.get("docId");
     if (!token || !docId) return;
-
-    const verifyToken = async () => {
+    const verify = async () => {
       try {
         const res = await api.get(`/documents/verify-token?token=${token}&docId=${docId}`);
         if (res.data.valid) {
           setHighlightedDocId(docId);
-          toast({
-            title: "✅ Access verified",
-            description: "Your document is highlighted below.",
-            status: "success", duration: 5000, isClosable: true,
-          });
+          toast({ title:"✅ Access verified", description:"Your document is highlighted below.",
+            status:"success", duration:5000, isClosable:true });
           setTimeout(() => {
-            const el = document.getElementById(`doc-row-${docId}`);
-            if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+            document.getElementById(`doc-row-${docId}`)
+              ?.scrollIntoView({ behavior:"smooth", block:"center" });
           }, 1000);
         }
       } catch {
-        toast({
-          title: "🔗 Link expired or invalid",
-          description: "Please request access again if needed.",
-          status: "error", duration: 5000, isClosable: true,
-        });
+        toast({ title:"Link expired or invalid", status:"error", duration:5000, isClosable:true });
       } finally {
         setSearchParams({}, { replace: true });
       }
     };
+    verify();
+  }, []); // eslint-disable-line
 
-    verifyToken();
-  }, []);
-
-  // ── Fetch all ─────────────────────────────────────────────────────────────
+  // ── Fetch all ──────────────────────────────────────────────────────────────
   const fetchAll = async () => {
     try {
       setLoading(true);
       const [docsRes, staffRes, reqRes] = await Promise.all([
         api.get("/documents"),
         api.get("/staff"),
-        isAdmin ? api.get("/documents/access-requests") : Promise.resolve({ data: [] }),
+        isAdmin ? api.get("/documents/access-requests") : Promise.resolve({ data:[] }),
       ]);
       setDocs(docsRes.data || []);
       setStaff(staffRes.data || []);
       setPendingRequests(reqRes.data || []);
     } catch {
-      toast({ title: "Failed to load documents", status: "error", duration: 2000 });
+      toast({ title:"Failed to load documents", status:"error", duration:2000 });
     } finally {
       setLoading(false);
     }
   };
 
-  // ── Access helpers ────────────────────────────────────────────────────────
-  const isAssignedToDoc = (doc) => doc.assignee?._id === user?._id || doc.assignee === user?._id;
-  const isCreatorOfDoc  = (doc) => doc.createdBy?._id === user?._id || doc.createdBy === user?._id;
-  const isAllowedUser   = (doc) => doc.allowedUsers?.some(u => (u?._id || u)?.toString() === user?._id?.toString());
-  const canReadDoc      = (doc) => isAdmin || isAssignedToDoc(doc) || isCreatorOfDoc(doc) || isAllowedUser(doc);
+  // ── Access helpers ─────────────────────────────────────────────────────────
+  const isAssignedToDoc  = (doc) => doc.assignee?._id === user?._id || doc.assignee === user?._id;
+  const isCreatorOfDoc   = (doc) => doc.createdBy?._id === user?._id || doc.createdBy === user?._id;
+  const isAllowedUser    = (doc) => doc.allowedUsers?.some(u => (u?._id||u)?.toString() === user?._id?.toString());
+  const canReadDoc       = (doc) => isAdmin || isAssignedToDoc(doc) || isCreatorOfDoc(doc) || isAllowedUser(doc);
+  const isTextDoc        = (doc) => !doc.file?.url && !!doc.content;
 
-  // ── Filter + paginate ─────────────────────────────────────────────────────
-  const projectFiltered = selectedProject ? docs.filter(d => d.project?._id === selectedProject._id) : docs;
-  const visibleDocs     = projectFiltered.filter(d => canReadDoc(d));
-  const lockedDocs      = canRead && !isAdmin ? projectFiltered.filter(d => !canReadDoc(d)) : [];
-  const allDisplayDocs  = [...visibleDocs, ...lockedDocs];
-  const totalPages      = Math.max(1, Math.ceil(allDisplayDocs.length / pageSize));
-  const startIndex      = (currentPage - 1) * pageSize;
-  const paginated       = allDisplayDocs.slice(startIndex, startIndex + pageSize);
-  const pendingCount    = pendingRequests.length;
+  // ── Filter + paginate ──────────────────────────────────────────────────────
+  const projectFiltered = selectedProject
+    ? docs.filter(d => d.project?._id === selectedProject._id)
+    : docs;
 
-  // ── Validation ────────────────────────────────────────────────────────────
-  const validate = () => {
+  const filtered = projectFiltered.filter(d => {
+    const matchSearch = !searchQuery || d.title?.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchStatus = statusFilter === "all" || d.status === statusFilter;
+    return matchSearch && matchStatus;
+  });
+
+  const visibleDocs    = filtered.filter(d => canReadDoc(d));
+  const lockedDocs     = canRead && !isAdmin ? filtered.filter(d => !canReadDoc(d)) : [];
+  const allDisplayDocs = [...visibleDocs, ...lockedDocs];
+  const totalPages     = Math.max(1, Math.ceil(allDisplayDocs.length / pageSize));
+  const startIndex     = (currentPage - 1) * pageSize;
+  const paginated      = allDisplayDocs.slice(startIndex, startIndex + pageSize);
+  const pendingCount   = pendingRequests.length;
+
+  // ── Upload form validation ─────────────────────────────────────────────────
+  const validateUpload = () => {
     const e = {};
-    if (!form.title.trim())               e.title       = "Title is required.";
-    else if (!SAFE_TEXT.test(form.title)) e.title       = "No special characters allowed.";
-    if (!form.description.trim())         e.description = "Description is required.";
+    if (!uploadForm.title.trim())                        e.title       = "Title is required.";
+    else if (!SAFE_TEXT.test(uploadForm.title))          e.title       = "No special characters.";
+    if (!uploadForm.description.trim())                  e.description = "Description is required.";
+    else if (!SAFE_TEXT.test(uploadForm.description))    e.description = "No special characters.";
     return e;
   };
 
-  // ── Reset modal ───────────────────────────────────────────────────────────
-  const resetModal = () => {
-    setForm(empty);
+  const resetUploadModal = () => {
+    setUploadForm(emptyUpload);
     setEditingId(null);
-    setErrors({});
+    setUploadErrors({});
     setSelectedFile(null);
     setRemoveFile(false);
     setExistingFile(null);
-    setEditorContent("");
-    setAutoSave(false);
-    setLastSaved(null);
-    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  // ── Open edit modal ───────────────────────────────────────────────────────
-  const handleOpen = (doc) => {
-    setForm({
+  const openUploadEdit = (doc) => {
+    setUploadForm({
       title:       doc.title,
       description: doc.description,
       status:      doc.status || "draft",
@@ -316,117 +255,121 @@ export default function DocumentsPage() {
     setExistingFile(doc.file?.url ? doc.file : null);
     setSelectedFile(null);
     setRemoveFile(false);
-    setErrors({});
-    setEditorContent(doc.content || "");
-    setAutoSave(false);
-    setLastSaved(null);
-    onOpen();
+    setUploadErrors({});
+    onUploadOpen();
   };
 
-  // ── Save (manual) ─────────────────────────────────────────────────────────
-  const handleSave = async () => {
-    const e = validate();
-    if (Object.keys(e).length) { setErrors(e); return; }
+  // ── File drag & drop ───────────────────────────────────────────────────────
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    processFile(file);
+  };
 
-    if (!editingId && !selectedProject) {
-      toast({
-        title: "Please select a project first",
-        description: "Use the project dropdown in the top navbar.",
-        status: "warning", duration: 4000,
-      });
+  const processFile = (file) => {
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ title:"File too large. Max 10MB.", status:"error", duration:3000 });
       return;
     }
+    setSelectedFile(file);
+    setRemoveFile(false);
+    setExistingFile(null);
+  };
 
-    setSaving(true);
+  // ── Save upload ────────────────────────────────────────────────────────────
+  const handleUploadSave = async () => {
+    const e = validateUpload();
+    if (Object.keys(e).length) { setUploadErrors(e); return; }
+    if (!editingId && !selectedProject) {
+      toast({ title:"Select a project first", status:"warning", duration:3000 });
+      return;
+    }
+    setUploadSaving(true);
     try {
       const fd = new FormData();
-      fd.append("title",       form.title);
-      fd.append("description", form.description);
-      fd.append("status",      form.status);
-      fd.append("content",     editorContent);
-      if (form.assignee)   fd.append("assignee",   form.assignee);
-      if (selectedProject) fd.append("project",    selectedProject._id);
-      if (selectedFile)    fd.append("file",        selectedFile);
-      if (removeFile)      fd.append("removeFile",  "true");
+      fd.append("title",       uploadForm.title);
+      fd.append("description", uploadForm.description);
+      fd.append("status",      uploadForm.status);
+      fd.append("content",     "");
+      if (uploadForm.assignee)  fd.append("assignee",  uploadForm.assignee);
+      if (selectedProject)      fd.append("project",   selectedProject._id);
+      if (selectedFile)         fd.append("file",      selectedFile);
+      if (removeFile)           fd.append("removeFile","true");
 
-      const headers = { "Content-Type": "multipart/form-data" };
-
+      const headers = { "Content-Type":"multipart/form-data" };
       if (editingId) {
-        // ✅ UPDATE — PUT /documents/:id
         const res = await api.put(`/documents/${editingId}`, fd, { headers });
         setDocs(prev => prev.map(d => d._id === editingId ? res.data : d));
-        toast({ title: "Document updated!", status: "success", duration: 2000 });
+        toast({ title:"Document updated!", status:"success", duration:2000 });
       } else {
-        // ✅ CREATE — POST /documents
         const res = await api.post("/documents", fd, { headers });
         setDocs(prev => [res.data, ...prev]);
-        toast({ title: "Document created!", status: "success", duration: 2000 });
+        toast({ title:"Document uploaded!", status:"success", duration:2000 });
       }
-      onClose();
-      resetModal();
+      onUploadClose();
+      resetUploadModal();
     } catch (err) {
-      const msg = err.response?.data?.error || "Failed to save document";
-      toast({ title: msg, status: "error", duration: 3000 });
+      const msg = err.response?.data?.error || "Failed to save";
+      toast({ title:msg, status:"error", duration:3000 });
     } finally {
-      setSaving(false);
+      setUploadSaving(false);
     }
   };
 
-  // ── Delete ────────────────────────────────────────────────────────────────
-  const handleDeleteConfirm = async () => {
+  // ── Delete ─────────────────────────────────────────────────────────────────
+  const handleDelete = async () => {
     setDeleting(true);
     try {
       await api.delete(`/documents/${deleteId}`);
       setDocs(prev => prev.filter(d => d._id !== deleteId));
-      toast({ title: "Document deleted", status: "info", duration: 2000 });
+      toast({ title:"Deleted", status:"info", duration:2000 });
       onDeleteClose();
       setDeleteId(null);
     } catch {
-      toast({ title: "Failed to delete", status: "error", duration: 2000 });
+      toast({ title:"Failed to delete", status:"error", duration:2000 });
     } finally {
       setDeleting(false);
     }
   };
 
-  // ── Request access ────────────────────────────────────────────────────────
+  // ── Request access ─────────────────────────────────────────────────────────
   const handleRequestAccess = async () => {
     if (!accessDoc) return;
     setAccessSending(true);
     try {
       await api.post(`/documents/${accessDoc._id}/request-access`, { message: accessMessage });
-      toast({ title: "Access request sent to admin!", status: "success", duration: 3000 });
-      setAccessMessage("");
-      onAccessClose();
-      setAccessDoc(null);
+      toast({ title:"Access request sent!", status:"success", duration:3000 });
+      setAccessMessage(""); onAccessClose(); setAccessDoc(null);
     } catch (err) {
-      const msg = err.response?.data?.error || "Failed to send request";
+      const msg = err.response?.data?.error || "Failed to send";
       if (msg.includes("already have a pending")) {
-        toast({ title: "You already have a pending request for this document", status: "warning", duration: 3000 });
+        toast({ title:"You already have a pending request", status:"warning", duration:3000 });
         onAccessClose();
       } else {
-        toast({ title: msg, status: "error", duration: 3000 });
+        toast({ title:msg, status:"error", duration:3000 });
       }
     } finally {
       setAccessSending(false);
     }
   };
 
-  // ── Module access ─────────────────────────────────────────────────────────
-  const handleModuleAccessRequest = async () => {
+  // ── Module access ──────────────────────────────────────────────────────────
+  const handleModuleAccess = async () => {
     setModuleAccessSending(true);
     try {
       await api.post("/documents/request-module-access", { message: moduleAccessMessage });
-      toast({ title: "Access request sent to admin!", status: "success", duration: 3000 });
-      setModuleAccessMessage("");
-      onModuleClose();
+      toast({ title:"Request sent!", status:"success", duration:3000 });
+      setModuleAccessMessage(""); onModuleClose();
     } catch {
-      toast({ title: "Failed to send request", status: "error", duration: 2000 });
+      toast({ title:"Failed to send", status:"error", duration:2000 });
     } finally {
       setModuleAccessSending(false);
     }
   };
 
-  // ── Approve / Deny ────────────────────────────────────────────────────────
+  // ── Grant/deny access ──────────────────────────────────────────────────────
   const handleGrantAccess = async (requestId, approve) => {
     try {
       await api.put(`/documents/access-requests/${requestId}`, {
@@ -436,29 +379,25 @@ export default function DocumentsPage() {
       setDocs(docsRes.data || []);
       setPendingRequests(prev => prev.filter(r => r._id !== requestId));
       toast({
-        title: approve ? "Access granted & email sent!" : "Request denied & user notified",
-        status: approve ? "success" : "info", duration: 2000,
+        title: approve ? "Access granted & email sent!" : "Request denied",
+        status: approve ? "success" : "info", duration:2000,
       });
     } catch {
-      toast({ title: "Failed to update request", status: "error", duration: 2000 });
+      toast({ title:"Failed to update request", status:"error", duration:2000 });
     }
   };
 
   if (loading) return (
-    <Flex justify="center" py={20}>
-      <Spinner size="xl" color="brand.500" />
-    </Flex>
+    <Flex justify="center" py={20}><Spinner size="xl" color="brand.500" /></Flex>
   );
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // RENDER
-  // ─────────────────────────────────────────────────────────────────────────
+  // ── RENDER ─────────────────────────────────────────────────────────────────
   return (
     <Box>
 
-      {/* ── HEADER ──────────────────────────────────────────────────────── */}
+      {/* ── HEADER ────────────────────────────────────────────────────────── */}
       <Box bg={cardBg} p={6} borderRadius="xl" boxShadow="md" mb={4}>
-        <Flex justify="space-between" align="center">
+        <Flex justify="space-between" align="center" wrap="wrap" gap={3}>
           <Flex align="center" gap={3}>
             <Box bg={iconBg} p={3} borderRadius="lg">
               <MdDescription size={26} color="#2b6cb0" />
@@ -467,16 +406,17 @@ export default function DocumentsPage() {
               <Heading size="md" color={textColor}>Documents</Heading>
               <Text fontSize="sm" color={subColor}>
                 {selectedProject
-                  ? `📁 ${selectedProject.name} · ${allDisplayDocs.length} documents`
+                  ? `${selectedProject.name} · ${allDisplayDocs.length} documents`
                   : `All projects · ${allDisplayDocs.length} documents`}
               </Text>
             </Box>
           </Flex>
 
-          <HStack spacing={2}>
+          <HStack spacing={2} flexWrap="wrap">
+            {/* Admin: access requests badge */}
             {isAdmin && (
-              <Button leftIcon={<MdLockOpen />} colorScheme="orange" size="sm" variant="outline"
-                onClick={onRequestsOpen} position="relative">
+              <Button leftIcon={<MdLockOpen size={16}/>} colorScheme="orange"
+                size="sm" variant="outline" onClick={onRequestsOpen} position="relative">
                 Access Requests
                 {pendingCount > 0 && (
                   <Badge colorScheme="red" borderRadius="full" position="absolute"
@@ -486,30 +426,78 @@ export default function DocumentsPage() {
                 )}
               </Button>
             )}
-            <Tooltip label={!selectedProject ? "Select a project from the top navbar first" : ""} isDisabled={!!selectedProject}>
-              <Button leftIcon={<MdAdd />} colorScheme="brand" size="sm"
-                isDisabled={!selectedProject} onClick={() => { resetModal(); onOpen(); }}>
-                New Document
+
+            {/* Upload button — file upload modal */}
+            <Tooltip label={!selectedProject ? "Select a project first" : ""} isDisabled={!!selectedProject}>
+              <Button
+                leftIcon={<MdUploadFile size={16}/>}
+                colorScheme="green" size="sm" variant="outline"
+                isDisabled={!selectedProject}
+                onClick={() => { resetUploadModal(); onUploadOpen(); }}>
+                Upload
+              </Button>
+            </Tooltip>
+
+            {/* Create button — navigates to CKEditor page */}
+            <Tooltip label={!selectedProject ? "Select a project first" : ""} isDisabled={!!selectedProject}>
+              <Button
+                leftIcon={<MdNoteAdd size={16}/>}
+                colorScheme="brand" size="sm"
+                isDisabled={!selectedProject}
+                onClick={() => navigate("/admin/documents/editor")}>
+                Create
               </Button>
             </Tooltip>
           </HStack>
         </Flex>
       </Box>
 
-      {/* ── NO PROJECT BANNER ───────────────────────────────────────────── */}
+      {/* ── NO PROJECT BANNER ─────────────────────────────────────────────── */}
       {!selectedProject && (
-        <Box mb={4} p={4} bg={warnBg} borderRadius="xl" border={`1px solid ${warnBdr}`}>
+        <Box mb={4} p={4} bg={warnBg} borderRadius="xl" border={`1px solid`} borderColor={warnBdr}>
           <Flex align="center" gap={3}>
-            <Text fontSize="xl">📁</Text>
+            <MdFolder size={20} color="#d69e2e" />
             <Box>
               <Text fontWeight="600" fontSize="sm" color={textColor}>Select a project to create documents</Text>
-              <Text fontSize="xs" color={subColor}>Use the project dropdown in the top navbar. You can still view all documents below.</Text>
+              <Text fontSize="xs" color={subColor}>Use the project dropdown in the top navbar.</Text>
             </Box>
           </Flex>
         </Box>
       )}
 
-      {/* ── EMPTY STATE ─────────────────────────────────────────────────── */}
+      {/* ── FILTERS ───────────────────────────────────────────────────────── */}
+      {allDisplayDocs.length > 0 && (
+        <Box bg={cardBg} px={4} py={3} borderRadius="xl" mb={4}
+          border={`1px solid ${borderColor}`} boxShadow="sm">
+          <Flex gap={3} align="center" wrap="wrap">
+            <HStack spacing={2}>
+              <Text fontSize="sm" color={subColor}>Show</Text>
+              <Select size="sm" w="72px" value={pageSize}
+                onChange={e => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}>
+                {PAGE_SIZES.map(n => <option key={n} value={n}>{n}</option>)}
+              </Select>
+            </HStack>
+            <HStack spacing={2}>
+              <Text fontSize="sm" color={subColor}>Status</Text>
+              <Select size="sm" w="120px" value={statusFilter}
+                onChange={e => { setStatusFilter(e.target.value); setCurrentPage(1); }}>
+                <option value="all">All</option>
+                <option value="draft">Draft</option>
+                <option value="active">Active</option>
+                <option value="review">Review</option>
+                <option value="archived">Archived</option>
+              </Select>
+            </HStack>
+            <Box flex={1} minW="160px">
+              <Input size="sm" placeholder="Search by name…" value={searchQuery}
+                onChange={e => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+                borderRadius="md" />
+            </Box>
+          </Flex>
+        </Box>
+      )}
+
+      {/* ── EMPTY STATE ───────────────────────────────────────────────────── */}
       {allDisplayDocs.length === 0 && (
         <Flex direction="column" align="center" py={20} color={subColor}>
           <MdDescription size={48} />
@@ -517,132 +505,204 @@ export default function DocumentsPage() {
             {selectedProject ? `No documents for ${selectedProject.name}` : "No documents found"}
           </Text>
           {selectedProject && (
-            <Button mt={4} colorScheme="brand" size="sm" leftIcon={<MdAdd />}
-              onClick={() => { resetModal(); onOpen(); }}>
-              Create first document
-            </Button>
+            <HStack mt={4} spacing={3}>
+              <Button colorScheme="green" size="sm" variant="outline"
+                leftIcon={<MdUploadFile size={14}/>}
+                onClick={() => { resetUploadModal(); onUploadOpen(); }}>
+                Upload File
+              </Button>
+              <Button colorScheme="brand" size="sm" leftIcon={<MdNoteAdd size={14}/>}
+                onClick={() => navigate("/admin/documents/editor")}>
+                Create Document
+              </Button>
+            </HStack>
           )}
         </Flex>
       )}
 
-      {/* ── TABLE ───────────────────────────────────────────────────────── */}
+      {/* ── TABLE ─────────────────────────────────────────────────────────── */}
       {allDisplayDocs.length > 0 && (
-        <Box bg={cardBg} borderRadius="xl" boxShadow="md" border={`1px solid ${borderColor}`} overflow="hidden">
+        <Box bg={cardBg} borderRadius="xl" boxShadow="md"
+          border={`1px solid ${borderColor}`} overflow="hidden">
           <TableContainer>
             <Table variant="simple" size="sm">
               <Thead bg={theadBg}>
                 <Tr>
-                  {["#", "Title", "Description", "Status", "Assignee", "Created By", "Project", "File", "Date", "Actions"].map(h => (
-                    <Th key={h} color={theadColor} fontSize="xs" py={3} textAlign={h === "Actions" ? "right" : "left"}>{h}</Th>
+                  {["#","Title","Description","Type","Status","Assignee","Created By","Project","File","Date","Actions"].map(h => (
+                    <Th key={h} color={theadColor} fontSize="xs" py={3}
+                      textAlign={h === "Actions" ? "right" : "left"}>{h}</Th>
                   ))}
                 </Tr>
               </Thead>
               <Tbody>
                 {paginated.map((doc, idx) => {
-                  const canSeeThisDoc = canReadDoc(doc);
+                  const canSee       = canReadDoc(doc);
                   const isHighlighted = doc._id === highlightedDocId;
+                  const typeMeta     = docTypeMeta(doc);
+                  const TypeIcon     = typeMeta.icon;
+                  const isTxt        = isTextDoc(doc);
 
                   // Locked row
-                  if (!canSeeThisDoc) {
-                    return (
-                      <Tr key={doc._id} bg={lockedBg} opacity={0.75}>
-                        <Td color={subColor} fontSize="xs">{startIndex + idx + 1}</Td>
-                        <Td py={3}>
-                          <Flex align="center" gap={2}>
-                            <MdLock size={14} color="#a0aec0" />
-                            <Text fontSize="sm" color={subColor} fontWeight="600">Restricted Document</Text>
-                          </Flex>
-                        </Td>
-                        <Td><Text fontSize="xs" color={subColor}>—</Text></Td>
-                        <Td><Badge colorScheme="gray" borderRadius="full" fontSize="xs" px={2}>restricted</Badge></Td>
-                        <Td><Text fontSize="xs" color={subColor}>—</Text></Td>
-                        <Td><Text fontSize="xs" color={subColor}>—</Text></Td>
-                        <Td><Text fontSize="xs" color={subColor}>{doc.project?.name ? `📁 ${doc.project.name}` : "—"}</Text></Td>
-                        <Td><Text fontSize="xs" color={subColor}>—</Text></Td>
-                        <Td><Text fontSize="xs" color={subColor}>—</Text></Td>
-                        <Td textAlign="right">
-                          <Tooltip label="Request access">
-                            <IconButton icon={<MdLock />} size="xs" colorScheme="orange"
-                              aria-label="Request Access" onClick={() => { setAccessDoc(doc); onAccessOpen(); }} />
-                          </Tooltip>
-                        </Td>
-                      </Tr>
-                    );
-                  }
+                  if (!canSee) return (
+                    <Tr key={doc._id} bg={lockedBg} opacity={0.75}>
+                      <Td color={subColor} fontSize="xs">{startIndex+idx+1}</Td>
+                      <Td py={3}>
+                        <Flex align="center" gap={2}>
+                          <MdLock size={14} color="#a0aec0"/>
+                          <Text fontSize="sm" color={subColor} fontWeight="600">Restricted Document</Text>
+                        </Flex>
+                      </Td>
+                      <Td><Text fontSize="xs" color={subColor}>—</Text></Td>
+                      <Td><Text fontSize="xs" color={subColor}>—</Text></Td>
+                      <Td><Badge colorScheme="gray" borderRadius="full" fontSize="xs" px={2}>restricted</Badge></Td>
+                      <Td><Text fontSize="xs" color={subColor}>—</Text></Td>
+                      <Td><Text fontSize="xs" color={subColor}>—</Text></Td>
+                      <Td><Text fontSize="xs" color={subColor}>{doc.project?.name || "—"}</Text></Td>
+                      <Td><Text fontSize="xs" color={subColor}>—</Text></Td>
+                      <Td><Text fontSize="xs" color={subColor}>—</Text></Td>
+                      <Td textAlign="right">
+                        <Tooltip label="Request access">
+                          <IconButton icon={<MdLock size={14}/>} size="xs" colorScheme="orange"
+                            aria-label="Request" onClick={() => { setAccessDoc(doc); onAccessOpen(); }}/>
+                        </Tooltip>
+                      </Td>
+                    </Tr>
+                  );
 
                   // Visible row
                   return (
                     <Tr key={doc._id} id={`doc-row-${doc._id}`}
-                      bg={isHighlighted ? highlightBg : idx % 2 === 0 ? rowEven : rowOdd}
+                      bg={isHighlighted ? highlightBg : idx%2===0 ? rowEven : rowOdd}
                       border={isHighlighted ? "2px solid" : undefined}
                       borderColor={isHighlighted ? highlightBdr : undefined}
                       _hover={{ bg: rowHover }} transition="background 0.15s">
-                      <Td color={subColor} fontSize="xs">{startIndex + idx + 1}</Td>
+                      <Td color={subColor} fontSize="xs">{startIndex+idx+1}</Td>
+
+                      {/* Title */}
                       <Td py={3} maxW="150px">
                         <Flex align="center" gap={2}>
-                          <MdDescription size={14} color="#3b82f6" />
-                          <Text fontWeight="600" fontSize="sm" color={textColor} noOfLines={1}>{doc.title}</Text>
+                          <MdDescription size={14} color="#3b82f6"/>
+                          <Text fontWeight="600" fontSize="sm" color={textColor} noOfLines={1}>
+                            {doc.title}
+                          </Text>
                           {isHighlighted && (
-                            <Badge colorScheme="green" fontSize="9px" borderRadius="full" px={1.5}>✓ Access Granted</Badge>
+                            <Badge colorScheme="green" fontSize="9px" borderRadius="full" px={1.5}>
+                              ✓ Access
+                            </Badge>
                           )}
                         </Flex>
                       </Td>
-                      <Td maxW="160px"><Text fontSize="xs" color={subColor} noOfLines={2}>{doc.description}</Text></Td>
+
+                      {/* Description */}
+                      <Td maxW="160px">
+                        <Text fontSize="xs" color={subColor} noOfLines={2}>{doc.description}</Text>
+                      </Td>
+
+                      {/* Type badge with icon */}
                       <Td>
-                        <Badge colorScheme={statusColors[doc.status] || "gray"}
+                        <Flex align="center" gap={1.5}>
+                          <TypeIcon size={14} color={typeMeta.color}/>
+                          <Badge colorScheme={typeMeta.scheme} borderRadius="full"
+                            fontSize="10px" px={2} fontWeight="700">
+                            {typeMeta.label}
+                          </Badge>
+                        </Flex>
+                      </Td>
+
+                      {/* Status */}
+                      <Td>
+                        <Badge colorScheme={statusColors[doc.status]||"gray"}
                           borderRadius="full" fontSize="xs" px={2} textTransform="capitalize">
-                          {doc.status || "draft"}
+                          {doc.status||"draft"}
                         </Badge>
                       </Td>
+
+                      {/* Assignee */}
                       <Td>
                         {doc.assignee?.name ? (
                           <Flex align="center" gap={2}>
-                            <Avatar name={doc.assignee.name} size="xs" bg="brand.500" color="white" />
-                            <Text fontSize="xs" color={textColor} whiteSpace="nowrap">{doc.assignee.name}</Text>
+                            <Avatar name={doc.assignee.name} size="xs" bg="brand.500" color="white"/>
+                            <Text fontSize="xs" color={textColor} whiteSpace="nowrap">
+                              {doc.assignee.name}
+                            </Text>
                           </Flex>
                         ) : <Text fontSize="xs" color={subColor}>—</Text>}
                       </Td>
+
+                      {/* Created by */}
                       <Td>
                         <Flex align="center" gap={2}>
-                          <Avatar name={doc.createdBy?.name} size="xs" bg="purple.400" color="white" />
+                          <Avatar name={doc.createdBy?.name} size="xs" bg="purple.400" color="white"/>
                           <Box>
-                            <Text fontSize="xs" color={textColor} whiteSpace="nowrap">{doc.createdBy?.name || "—"}</Text>
-                            {isCreatorOfDoc(doc) && <Badge colorScheme="purple" fontSize="9px" borderRadius="full">you</Badge>}
+                            <Text fontSize="xs" color={textColor} whiteSpace="nowrap">
+                              {doc.createdBy?.name||"—"}
+                            </Text>
+                            {isCreatorOfDoc(doc) && (
+                              <Badge colorScheme="purple" fontSize="9px" borderRadius="full">you</Badge>
+                            )}
                           </Box>
                         </Flex>
                       </Td>
-                      <Td><Text fontSize="xs" color={subColor} noOfLines={1}>{doc.project?.name ? `📁 ${doc.project.name}` : "—"}</Text></Td>
+
+                      {/* Project */}
                       <Td>
-                        {doc.file?.url ? (
+                        <Text fontSize="xs" color={subColor} noOfLines={1}>
+                          {doc.project?.name || "—"}
+                        </Text>
+                      </Td>
+
+                      {/* File / View */}
+                      <Td>
+                        {isTxt ? (
+                          /* Text doc — View button navigates to viewer */
+                          <Button size="xs" colorScheme="purple" variant="outline"
+                            leftIcon={<MdVisibility size={12}/>}
+                            onClick={() => navigate(`/admin/documents/view/${doc._id}`)}>
+                            View
+                          </Button>
+                        ) : doc.file?.url ? (
+                          /* File doc — download link */
                           <Tooltip label={`${doc.file.originalName} (${fmtSize(doc.file.size)})`}>
                             <Button as="a"
                               href={`${import.meta.env.VITE_API_URL || "https://w2ml73xv-5000.inc1.devtunnels.ms"}${doc.file.url}`}
                               target="_blank" rel="noopener noreferrer"
                               size="xs" colorScheme="green" variant="outline"
-                              leftIcon={<span style={{ fontSize: "12px" }}>{fileIcon(doc.file.mimetype)}</span>}>
-                              <MdDownload size={12} />
+                              leftIcon={<TypeIcon size={12}/>}>
+                              <MdDownload size={12}/>
                             </Button>
                           </Tooltip>
-                        ) : <Text fontSize="xs" color={subColor}>—</Text>}
+                        ) : (
+                          <Text fontSize="xs" color={subColor}>—</Text>
+                        )}
                       </Td>
+
+                      {/* Date */}
                       <Td>
                         <Text fontSize="xs" color={subColor} whiteSpace="nowrap">
-                          {new Date(doc.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                          {new Date(doc.createdAt).toLocaleDateString("en-IN",
+                            { day:"numeric", month:"short", year:"numeric" })}
                         </Text>
                       </Td>
+
+                      {/* Actions */}
                       <Td textAlign="right">
                         <Flex justify="flex-end" gap={1}>
                           {(canUpdate || isCreatorOfDoc(doc)) && (
-                            <Tooltip label="Edit">
-                              <IconButton icon={<MdEdit />} size="xs" colorScheme="brand"
-                                variant="ghost" aria-label="Edit" onClick={() => handleOpen(doc)} />
+                            <Tooltip label={isTxt ? "Edit in editor" : "Edit"}>
+                              <IconButton
+                                icon={<MdEdit size={14}/>} size="xs"
+                                colorScheme="brand" variant="ghost" aria-label="Edit"
+                                onClick={() => isTxt
+                                  ? navigate(`/admin/documents/editor/${doc._id}`)
+                                  : openUploadEdit(doc)
+                                }/>
                             </Tooltip>
                           )}
                           {canDelete && (
                             <Tooltip label="Delete">
-                              <IconButton icon={<MdDelete />} size="xs" colorScheme="red"
-                                variant="ghost" aria-label="Delete"
-                                onClick={() => { setDeleteId(doc._id); onDeleteOpen(); }} />
+                              <IconButton icon={<MdDelete size={14}/>} size="xs"
+                                colorScheme="red" variant="ghost" aria-label="Delete"
+                                onClick={() => { setDeleteId(doc._id); onDeleteOpen(); }}/>
                             </Tooltip>
                           )}
                         </Flex>
@@ -654,142 +714,85 @@ export default function DocumentsPage() {
             </Table>
           </TableContainer>
 
-          {/* ── PAGINATION ─────────────────────────────────────────────── */}
-          <Flex px={4} py={3} justify="space-between" align="center" borderTop={`1px solid ${borderColor}`}>
+          {/* ── PAGINATION ──────────────────────────────────────────────── */}
+          <Flex px={4} py={3} justify="space-between" align="center"
+            borderTop={`1px solid ${borderColor}`} wrap="wrap" gap={2}>
             <Text fontSize="sm" color={subColor}>
-              {`${startIndex + 1}–${Math.min(startIndex + pageSize, allDisplayDocs.length)} of ${allDisplayDocs.length}`}
+              {`${startIndex+1}–${Math.min(startIndex+pageSize, allDisplayDocs.length)} of ${allDisplayDocs.length}`}
             </Text>
-            <HStack spacing={2}>
-              <Text fontSize="sm" color={textColor}>Rows</Text>
-              <Select size="sm" w="72px" value={pageSize}
-                onChange={e => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}>
-                {PAGE_SIZES.map(n => <option key={n} value={n}>{n}</option>)}
-              </Select>
-            </HStack>
             <HStack spacing={1}>
-              <Button size="sm" onClick={() => setCurrentPage(1)} isDisabled={currentPage === 1}>«</Button>
-              <Button size="sm" onClick={() => setCurrentPage(p => p - 1)} isDisabled={currentPage === 1}>‹</Button>
+              <Button size="sm" onClick={() => setCurrentPage(1)}          isDisabled={currentPage===1}>«</Button>
+              <Button size="sm" onClick={() => setCurrentPage(p=>p-1)}     isDisabled={currentPage===1}>‹</Button>
               <Text fontSize="sm" color={textColor} px={2}>{currentPage} / {totalPages}</Text>
-              <Button size="sm" onClick={() => setCurrentPage(p => p + 1)} isDisabled={currentPage === totalPages}>›</Button>
-              <Button size="sm" onClick={() => setCurrentPage(totalPages)} isDisabled={currentPage === totalPages}>»</Button>
+              <Button size="sm" onClick={() => setCurrentPage(p=>p+1)}     isDisabled={currentPage===totalPages}>›</Button>
+              <Button size="sm" onClick={() => setCurrentPage(totalPages)} isDisabled={currentPage===totalPages}>»</Button>
             </HStack>
           </Flex>
         </Box>
       )}
 
-      {/* ══════════════════════════════════════════════════════════════════
-          MODAL: Create / Edit
-      ══════════════════════════════════════════════════════════════════ */}
-      <Modal isOpen={isOpen} onClose={() => { onClose(); resetModal(); }}
-        isCentered size="4xl" scrollBehavior="inside">
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          MODAL: Upload File
+      ══════════════════════════════════════════════════════════════════════ */}
+      <Modal isOpen={isUploadOpen} onClose={() => { onUploadClose(); resetUploadModal(); }}
+        isCentered size="xl" scrollBehavior="inside">
         <ModalOverlay />
         <ModalContent bg={cardBg}>
-
-          {/* ── Modal Header with auto-save toggle ── */}
           <ModalHeader color={textColor} borderBottom={`1px solid ${borderColor}`} pb={3}>
-            <Flex align="center" justify="space-between" w="100%">
-              <Flex align="center" gap={2}>
-                <MdDescription />
-                <Text>{editingId ? "Edit Document" : "New Document"}</Text>
-              </Flex>
-
-              {/* ✅ Auto-save toggle — edit mode only */}
-              {editingId && (
-                <Flex align="center" gap={3} mr={8}>
-                  {autoSaving && (
-                    <Flex align="center" gap={1}>
-                      <Spinner size="xs" color="green.400" />
-                      <Text fontSize="xs" color="green.400" fontWeight="500">Saving…</Text>
-                    </Flex>
-                  )}
-                  {!autoSaving && lastSaved && (
-                    <Text fontSize="xs" color={subColor}>
-                      ✓ {lastSaved.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
-                    </Text>
-                  )}
-                  <HStack spacing={2}
-                    bg={autoSave ? autoSaveBg : "transparent"}
-                    border={`1px solid ${autoSave ? autoSaveBdr : "transparent"}`}
-                    borderRadius="full" px={3} py={1} transition="all 0.2s">
-                    <Text fontSize="xs" color={autoSave ? "green.600" : subColor} fontWeight="600">
-                      Auto-save
-                    </Text>
-                    <Switch size="sm" isChecked={autoSave} colorScheme="green"
-                      onChange={e => {
-                        setAutoSave(e.target.checked);
-                        if (!e.target.checked && autoSaveTimer.current) {
-                          clearTimeout(autoSaveTimer.current);
-                        }
-                      }} />
-                  </HStack>
-                </Flex>
-              )}
+            <Flex align="center" gap={2}>
+              <MdUploadFile size={18} color="#38a169"/>
+              <Text>{editingId ? "Edit Upload" : "Upload Document"}</Text>
             </Flex>
           </ModalHeader>
-
-          <ModalCloseButton top={3} />
-
+          <ModalCloseButton top={3}/>
           <ModalBody py={5}>
             <VStack spacing={4}>
 
-              {/* Project banner */}
               {selectedProject && (
-                <Box w="100%" p={3} bg={projBlueBg} borderRadius="lg" border={`1px solid ${projBlueBdr}`}>
-                  <Text fontSize="xs" color={projBlueClr} fontWeight="600">📁 Project: {selectedProject.name}</Text>
-                </Box>
-              )}
-
-              {/* Creator info */}
-              {!editingId && (
-                <Box w="100%" p={3} bg={cardBg} borderRadius="lg" border={`1px solid ${borderColor}`}>
+                <Box w="100%" p={3} bg="blue.50" borderRadius="lg"
+                  border="1px solid" borderColor="blue.200" _dark={{ bg:"blue.900", borderColor:"blue.700" }}>
                   <Flex align="center" gap={2}>
-                    <MdPerson size={14} color="#805ad5" />
-                    <Text fontSize="xs" color={subColor}>Creating as: <strong>{user?.name}</strong></Text>
-                  </Flex>
-                </Box>
-              )}
-
-              {/* Auto-save active notice */}
-              {autoSave && editingId && (
-                <Box w="100%" p={3} bg={autoSaveBg} borderRadius="lg" border={`1px solid ${autoSaveBdr}`}>
-                  <Flex align="center" gap={2}>
-                    <MdSave size={14} color="#38a169" />
-                    <Text fontSize="xs" color="green.600" fontWeight="500">
-                      Auto-save is ON — changes save every 2 seconds. Save button is hidden.
+                    <MdFolder size={14} color="#2b6cb0"/>
+                    <Text fontSize="xs" color="blue.700" fontWeight="600"
+                      _dark={{ color:"blue.200" }}>
+                      Project: {selectedProject.name}
                     </Text>
                   </Flex>
                 </Box>
               )}
 
               {/* Title */}
-              <FormControl isInvalid={!!errors.title}>
+              <FormControl isInvalid={!!uploadErrors.title}>
                 <FormLabel fontSize="sm" color={textColor}>Title *</FormLabel>
-                <Input placeholder="Document title" value={form.title}
+                <Input placeholder="Document title" value={uploadForm.title}
                   onChange={e => {
                     if (e.target.value && !SAFE_TEXT.test(e.target.value)) return;
-                    setForm(p => ({ ...p, title: e.target.value }));
-                    setErrors(p => ({ ...p, title: undefined }));
-                  }} />
-                <FormErrorMessage>{errors.title}</FormErrorMessage>
+                    setUploadForm(p => ({...p, title: e.target.value}));
+                    setUploadErrors(p => ({...p, title: undefined}));
+                  }}/>
+                <FormErrorMessage>{uploadErrors.title}</FormErrorMessage>
               </FormControl>
 
               {/* Description */}
-              <FormControl isInvalid={!!errors.description}>
+              <FormControl isInvalid={!!uploadErrors.description}>
                 <FormLabel fontSize="sm" color={textColor}>Description *</FormLabel>
-                <Textarea placeholder="Describe the document…" value={form.description} rows={3}
+                <Textarea placeholder="Describe the document…" rows={2}
+                  value={uploadForm.description}
                   onChange={e => {
                     if (e.target.value && !SAFE_TEXT.test(e.target.value)) return;
-                    setForm(p => ({ ...p, description: e.target.value }));
-                    setErrors(p => ({ ...p, description: undefined }));
-                  }} />
-                <FormErrorMessage>{errors.description}</FormErrorMessage>
+                    setUploadForm(p => ({...p, description: e.target.value}));
+                    setUploadErrors(p => ({...p, description: undefined}));
+                  }}/>
+                <FormErrorMessage>{uploadErrors.description}</FormErrorMessage>
               </FormControl>
 
               {/* Status + Assignee */}
-              <Grid templateColumns="repeat(2, 1fr)" gap={4} w="100%">
+              <Grid templateColumns="repeat(2,1fr)" gap={4} w="100%">
                 <FormControl>
                   <FormLabel fontSize="sm" color={textColor}>Status</FormLabel>
-                  <Select value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))}>
+                  <Select value={uploadForm.status}
+                    onChange={e => setUploadForm(p => ({...p, status: e.target.value}))}>
                     <option value="draft">Draft</option>
                     <option value="active">Active</option>
                     <option value="review">In Review</option>
@@ -797,260 +800,248 @@ export default function DocumentsPage() {
                   </Select>
                 </FormControl>
                 <FormControl>
-                  <FormLabel fontSize="sm" color={textColor}>
-                    Assignee <Text as="span" color={subColor}>(optional)</Text>
-                  </FormLabel>
-                  <Select placeholder="Select assignee" value={form.assignee}
-                    onChange={e => setForm(p => ({ ...p, assignee: e.target.value }))}>
+                  <FormLabel fontSize="sm" color={textColor}>Assignee</FormLabel>
+                  <Select placeholder="Select assignee" value={uploadForm.assignee}
+                    onChange={e => setUploadForm(p => ({...p, assignee: e.target.value}))}>
                     {staff.map(s => <option key={s._id} value={s._id}>{s.name}</option>)}
                   </Select>
                 </FormControl>
               </Grid>
 
-              {/* File Upload */}
+              {/* Drag & Drop zone */}
               <FormControl>
                 <FormLabel fontSize="sm" color={textColor}>
-                  <Flex align="center" gap={2}>
-                    <MdAttachFile />
-                    Attachment <Text as="span" color={subColor}>(optional, max 10MB)</Text>
+                  <Flex align="center" gap={1}>
+                    <MdAttachFile size={14}/>
+                    File <Text as="span" color={subColor}>(optional, max 10MB)</Text>
                   </Flex>
                 </FormLabel>
 
+                {/* Existing file display */}
                 {existingFile && !removeFile && !selectedFile && (
-                  <Box p={3} bg={fileBg} borderRadius="lg" border={`1px solid ${fileBdr}`} mb={2}>
+                  <Box p={3} bg={fileBg} borderRadius="lg"
+                    border={`1px solid`} borderColor={fileBdr} mb={2}>
                     <Flex align="center" justify="space-between">
                       <Flex align="center" gap={2}>
-                        <Text fontSize="lg">{fileIcon(existingFile.mimetype)}</Text>
+                        <MdAttachFile size={16} color={fileClr}/>
                         <Box>
-                          <Text fontSize="xs" fontWeight="600" color={fileClr} noOfLines={1}>{existingFile.originalName}</Text>
+                          <Text fontSize="xs" fontWeight="600" color={fileClr} noOfLines={1}>
+                            {existingFile.originalName}
+                          </Text>
                           <Text fontSize="xs" color={subColor}>{fmtSize(existingFile.size)}</Text>
                         </Box>
                       </Flex>
-                      <Tooltip label="Remove file">
-                        <IconButton icon={<MdClear />} size="xs" colorScheme="red" variant="ghost"
-                          aria-label="Remove" onClick={() => setRemoveFile(true)} />
-                      </Tooltip>
+                      <IconButton icon={<MdClear size={14}/>} size="xs" colorScheme="red"
+                        variant="ghost" aria-label="Remove" onClick={() => setRemoveFile(true)}/>
                     </Flex>
                   </Box>
                 )}
 
+                {/* New file selected display */}
                 {selectedFile && (
-                  <Box p={3} bg={fileBg} borderRadius="lg" border={`1px solid ${fileBdr}`} mb={2}>
+                  <Box p={3} bg={fileBg} borderRadius="lg"
+                    border={`1px solid`} borderColor={fileBdr} mb={2}>
                     <Flex align="center" justify="space-between">
                       <Flex align="center" gap={2}>
-                        <Text fontSize="lg">{fileIcon(selectedFile.type)}</Text>
+                        <MdAttachFile size={16} color={fileClr}/>
                         <Box>
-                          <Text fontSize="xs" fontWeight="600" color={fileClr} noOfLines={1}>{selectedFile.name}</Text>
+                          <Text fontSize="xs" fontWeight="600" color={fileClr} noOfLines={1}>
+                            {selectedFile.name}
+                          </Text>
                           <Text fontSize="xs" color={subColor}>{fmtSize(selectedFile.size)}</Text>
                         </Box>
                       </Flex>
-                      <Tooltip label="Remove selected file">
-                        <IconButton icon={<MdClear />} size="xs" colorScheme="red" variant="ghost"
-                          aria-label="Remove" onClick={() => { setSelectedFile(null); if (fileInputRef.current) fileInputRef.current.value = ""; }} />
-                      </Tooltip>
+                      <IconButton icon={<MdClear size={14}/>} size="xs" colorScheme="red"
+                        variant="ghost" aria-label="Remove"
+                        onClick={() => { setSelectedFile(null); if (fileInputRef.current) fileInputRef.current.value = ""; }}/>
                     </Flex>
                   </Box>
                 )}
 
-                <input ref={fileInputRef} type="file" style={{ display: "none" }}
+                {/* Drop zone */}
+                {!selectedFile && !(existingFile && !removeFile) && (
+                  <Box
+                    onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                    onDragLeave={() => setDragOver(false)}
+                    onDrop={handleDrop}
+                    onClick={() => fileInputRef.current?.click()}
+                    bg={dragOver ? dragBg : dropzoneBg}
+                    border="2px dashed"
+                    borderColor={dragOver ? "blue.400" : dropzoneBdr}
+                    borderRadius="xl" p={8} textAlign="center" cursor="pointer"
+                    transition="all 0.2s"
+                    _hover={{ borderColor:"blue.300", bg: dragBg }}>
+                    <MdCloudUpload size={32} color={dragOver ? "#3182ce" : "#a0aec0"}
+                      style={{ margin:"0 auto 8px" }}/>
+                    <Text fontSize="sm" fontWeight="600" color={dragOver ? "blue.500" : subColor}>
+                      {dragOver ? "Drop it here!" : "Drag & drop or click to browse"}
+                    </Text>
+                    <Text fontSize="xs" color={subColor} mt={1}>
+                      PDF, Word, Excel, PowerPoint, TXT, Images — max 10MB
+                    </Text>
+                  </Box>
+                )}
+
+                <input ref={fileInputRef} type="file" style={{ display:"none" }}
                   accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.jpg,.jpeg,.png,.gif,.webp"
-                  onChange={e => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    if (file.size > 10 * 1024 * 1024) {
-                      toast({ title: "File too large. Max 10MB.", status: "error", duration: 3000 });
-                      return;
-                    }
-                    setSelectedFile(file);
-                    setRemoveFile(false);
-                    setExistingFile(null);
-                  }} />
-                <Button size="sm" variant="outline" leftIcon={<MdAttachFile />}
-                  onClick={() => fileInputRef.current?.click()} isDisabled={!!selectedFile}>
-                  {selectedFile ? "File selected" : existingFile && !removeFile ? "Replace file" : "Choose file"}
-                </Button>
-                <Text fontSize="xs" color={subColor} mt={1}>Supported: PDF, Word, Excel, PowerPoint, TXT, Images</Text>
+                  onChange={e => { const f = e.target.files?.[0]; if (f) processFile(f); }}/>
               </FormControl>
 
-              {/* ✅ React-Quill Rich Text Editor */}
-              <FormControl>
-                <FormLabel fontSize="sm" color={textColor}>
-                  Document Content{" "}
-                  <Text as="span" color={subColor} fontWeight="400">(optional)</Text>
-                </FormLabel>
-                <Box
-                  border="1px solid"
-                  borderColor={borderColor}
-                  borderRadius="md"
-                  overflow="hidden"
-                  sx={{
-                    ".ql-toolbar": {
-                      borderTop: "none",
-                      borderLeft: "none",
-                      borderRight: "none",
-                      borderBottom: `1px solid ${borderColor}`,
-                      background: cardBg,
-                    },
-                    ".ql-container": {
-                      border: "none",
-                      fontSize: "14px",
-                    },
-                    ".ql-editor": {
-                      minHeight: "200px",
-                      maxHeight: "380px",
-                      overflowY: "auto",
-                      color: textColor,
-                    },
-                    ".ql-editor.ql-blank::before": {
-                      color: subColor,
-                      fontStyle: "normal",
-                    },
-                  }}
-                >
-                  <ReactQuill
-                    theme="snow"
-                    value={editorContent}
-                    onChange={setEditorContent}
-                    modules={QUILL_MODULES}
-                    formats={QUILL_FORMATS}
-                    placeholder="Write the document content here…"
-                  />
-                </Box>
-              </FormControl>
-
-              {/* Assignee email notice */}
-              {form.assignee && (
-                <Box w="100%" p={3} bg={projBlueBg} borderRadius="lg" border={`1px solid ${projBlueBdr}`}>
+              {uploadForm.assignee && (
+                <Box w="100%" p={3} bg="blue.50" borderRadius="lg"
+                  border="1px solid" borderColor="blue.200"
+                  _dark={{ bg:"blue.900", borderColor:"blue.700" }}>
                   <Flex align="center" gap={2}>
-                    <MdMail size={14} color="#3b82f6" />
-                    <Text fontSize="xs" color={projBlueClr}>
-                      Assignee will receive an email notification automatically.
+                    <MdMail size={14} color="#3b82f6"/>
+                    <Text fontSize="xs" color="blue.700" _dark={{ color:"blue.200" }}>
+                      Assignee will receive an email notification.
                     </Text>
                   </Flex>
                 </Box>
               )}
             </VStack>
           </ModalBody>
-
-          {/* ── Footer ── */}
           <ModalFooter borderTop={`1px solid ${borderColor}`} gap={2}>
-            {/* ✅ CANCEL — always visible */}
-            <Button variant="ghost" onClick={() => { onClose(); resetModal(); }}>
-              Cancel
+            <Button variant="ghost" onClick={() => { onUploadClose(); resetUploadModal(); }}>Cancel</Button>
+            <Button colorScheme="green" leftIcon={<MdUploadFile size={14}/>}
+              isLoading={uploadSaving} loadingText={editingId ? "Updating…" : "Uploading…"}
+              onClick={handleUploadSave}>
+              {editingId ? "Update" : "Upload"}
             </Button>
-
-            {/* ✅ SAVE — hidden only when auto-save is ON in edit mode */}
-            {(!autoSave || !editingId) && (
-              <Button colorScheme="brand" leftIcon={<MdSave />}
-                isLoading={saving} loadingText={editingId ? "Updating…" : "Creating…"}
-                onClick={handleSave}>
-                {editingId ? "Update Document" : "Create Document"}
-              </Button>
-            )}
           </ModalFooter>
         </ModalContent>
       </Modal>
 
-      {/* ── MODAL: Delete ────────────────────────────────────────────────── */}
+
+      {/* ── MODAL: Delete ──────────────────────────────────────────────────── */}
       <Modal isOpen={isDeleteOpen} onClose={onDeleteClose} isCentered size="sm">
-        <ModalOverlay />
+        <ModalOverlay/>
         <ModalContent bg={cardBg} borderRadius="xl">
           <ModalHeader fontSize="md" color={textColor}>Delete Document</ModalHeader>
-          <ModalBody fontSize="sm" color={subColor}>Are you sure? This action cannot be undone.</ModalBody>
+          <ModalBody fontSize="sm" color={subColor}>
+            Are you sure? This cannot be undone.
+          </ModalBody>
           <ModalFooter gap={2}>
             <Button size="sm" variant="ghost" onClick={onDeleteClose}>Cancel</Button>
             <Button size="sm" colorScheme="red" isLoading={deleting}
-              loadingText="Deleting…" onClick={handleDeleteConfirm}>Delete</Button>
+              loadingText="Deleting…" onClick={handleDelete}>Delete</Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
 
-      {/* ── MODAL: Request Access ────────────────────────────────────────── */}
+
+      {/* ── MODAL: Request Document Access ────────────────────────────────── */}
       <Modal isOpen={isAccessOpen}
         onClose={() => { onAccessClose(); setAccessDoc(null); setAccessMessage(""); }}
         isCentered size="md">
-        <ModalOverlay />
+        <ModalOverlay/>
         <ModalContent bg={cardBg}>
-          <ModalHeader color={textColor}><Flex align="center" gap={2}><MdLock /> Request Document Access</Flex></ModalHeader>
-          <ModalCloseButton />
+          <ModalHeader color={textColor}>
+            <Flex align="center" gap={2}><MdLock size={18}/> Request Access</Flex>
+          </ModalHeader>
+          <ModalCloseButton/>
           <ModalBody>
             <VStack spacing={4}>
-              <Box w="100%" p={4} bg={reqBg} borderRadius="lg" border={`1px solid ${reqBdr}`}>
-                <Text fontSize="sm" fontWeight="600" color={textColor} mb={1}>🔒 Restricted Document</Text>
-                <Text fontSize="xs" color={subColor}>You are not assigned to this document. The admin will be notified via email.</Text>
+              <Box w="100%" p={4} bg={reqBg} borderRadius="lg"
+                border={`1px solid`} borderColor={reqBdr}>
+                <Text fontSize="sm" fontWeight="600" color={textColor} mb={1}>
+                  Restricted Document
+                </Text>
+                <Text fontSize="xs" color={subColor}>
+                  You are not assigned to this document. The admin will be notified via email.
+                </Text>
               </Box>
               <FormControl>
                 <FormLabel fontSize="sm" color={textColor}>
                   Reason <Text as="span" color={subColor}>(optional)</Text>
                 </FormLabel>
-                <Textarea placeholder="Explain why you need access…" value={accessMessage}
-                  onChange={e => setAccessMessage(e.target.value)} rows={3} />
+                <Textarea placeholder="Explain why you need access…" rows={3}
+                  value={accessMessage} onChange={e => setAccessMessage(e.target.value)}/>
               </FormControl>
             </VStack>
           </ModalBody>
-          <ModalFooter>
-            <Button variant="ghost" mr={3}
-              onClick={() => { onAccessClose(); setAccessDoc(null); setAccessMessage(""); }}>Cancel</Button>
-            <Button colorScheme="orange" leftIcon={<MdMail />}
-              isLoading={accessSending} onClick={handleRequestAccess}>Send Request</Button>
+          <ModalFooter gap={2}>
+            <Button variant="ghost"
+              onClick={() => { onAccessClose(); setAccessDoc(null); setAccessMessage(""); }}>
+              Cancel
+            </Button>
+            <Button colorScheme="orange" leftIcon={<MdMail size={14}/>}
+              isLoading={accessSending} onClick={handleRequestAccess}>
+              Send Request
+            </Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
 
-      {/* ── MODAL: Module Access ─────────────────────────────────────────── */}
+
+      {/* ── MODAL: Module Access Request ──────────────────────────────────── */}
       <Modal isOpen={isModuleOpen} onClose={onModuleClose} isCentered size="md">
-        <ModalOverlay />
+        <ModalOverlay/>
         <ModalContent bg={cardBg}>
-          <ModalHeader color={textColor}><Flex align="center" gap={2}><MdLock /> Request Documents Access</Flex></ModalHeader>
-          <ModalCloseButton />
+          <ModalHeader color={textColor}>
+            <Flex align="center" gap={2}><MdLock size={18}/> Request Documents Access</Flex>
+          </ModalHeader>
+          <ModalCloseButton/>
           <ModalBody>
             <VStack spacing={4}>
-              <Box w="100%" p={4} bg={reqBg} borderRadius="lg" border={`1px solid ${reqBdr}`}>
-                <Text fontSize="sm" fontWeight="600" color={textColor} mb={1}>📄 Documents Module</Text>
-                <Text fontSize="xs" color={subColor}>Your request will be sent to the admin via email.</Text>
+              <Box w="100%" p={4} bg={reqBg} borderRadius="lg"
+                border={`1px solid`} borderColor={reqBdr}>
+                <Text fontSize="sm" fontWeight="600" color={textColor} mb={1}>
+                  Documents Module
+                </Text>
+                <Text fontSize="xs" color={subColor}>
+                  Your request will be sent to the admin via email.
+                </Text>
               </Box>
               <FormControl>
                 <FormLabel fontSize="sm" color={textColor}>
                   Reason <Text as="span" color={subColor}>(optional)</Text>
                 </FormLabel>
-                <Textarea placeholder="Explain why you need access…" value={moduleAccessMessage}
-                  onChange={e => setModuleAccessMessage(e.target.value)} rows={3} />
+                <Textarea placeholder="Explain why you need access…" rows={3}
+                  value={moduleAccessMessage}
+                  onChange={e => setModuleAccessMessage(e.target.value)}/>
               </FormControl>
             </VStack>
           </ModalBody>
-          <ModalFooter>
-            <Button variant="ghost" mr={3} onClick={onModuleClose}>Cancel</Button>
-            <Button colorScheme="orange" leftIcon={<MdMail />}
-              isLoading={moduleAccessSending} onClick={handleModuleAccessRequest}>Send Request</Button>
+          <ModalFooter gap={2}>
+            <Button variant="ghost" onClick={onModuleClose}>Cancel</Button>
+            <Button colorScheme="orange" leftIcon={<MdMail size={14}/>}
+              isLoading={moduleAccessSending} onClick={handleModuleAccess}>
+              Send Request
+            </Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
 
-      {/* ── MODAL: Pending Access Requests (admin) ───────────────────────── */}
+
+      {/* ── MODAL: Pending Access Requests (admin) ────────────────────────── */}
       <Modal isOpen={isRequestsOpen} onClose={onRequestsClose} isCentered size="xl">
-        <ModalOverlay />
+        <ModalOverlay/>
         <ModalContent bg={cardBg}>
           <ModalHeader color={textColor}>
             <Flex align="center" gap={2}>
-              <MdLockOpen /> Pending Access Requests
-              {pendingCount > 0 && <Badge colorScheme="red" borderRadius="full" px={2}>{pendingCount}</Badge>}
+              <MdLockOpen size={18}/> Pending Access Requests
+              {pendingCount > 0 && (
+                <Badge colorScheme="red" borderRadius="full" px={2}>{pendingCount}</Badge>
+              )}
             </Flex>
           </ModalHeader>
-          <ModalCloseButton />
+          <ModalCloseButton/>
           <ModalBody>
             {pendingRequests.length === 0 ? (
               <Flex direction="column" align="center" py={10} color={subColor}>
-                <MdCheck size={40} />
+                <MdCheck size={40}/>
                 <Text fontSize="sm" mt={2}>No pending requests</Text>
               </Flex>
             ) : (
               <VStack spacing={3} align="stretch">
                 {pendingRequests.map(req => (
-                  <Box key={req._id} p={4} borderRadius="lg" border={`1px solid ${reqBdr}`} bg={reqBg}>
+                  <Box key={req._id} p={4} borderRadius="lg"
+                    border={`1px solid`} borderColor={reqBdr} bg={reqBg}>
                     <Flex justify="space-between" align="flex-start">
                       <Box flex={1}>
                         <Flex align="center" gap={2} mb={1}>
-                          <Avatar name={req.user?.name} size="xs" bg="brand.500" color="white" />
+                          <Avatar name={req.user?.name} size="xs" bg="brand.500" color="white"/>
                           <Text fontWeight="600" fontSize="sm" color={textColor}>{req.user?.name}</Text>
                           <Badge colorScheme="gray" fontSize="xs">{req.user?.email}</Badge>
                         </Flex>
@@ -1066,12 +1057,14 @@ export default function DocumentsPage() {
                       </Box>
                       <HStack ml={4}>
                         <Tooltip label="Approve — emails user">
-                          <IconButton icon={<MdCheck />} size="sm" colorScheme="green" aria-label="Approve"
-                            onClick={() => handleGrantAccess(req._id, true)} />
+                          <IconButton icon={<MdCheck size={14}/>} size="sm" colorScheme="green"
+                            aria-label="Approve"
+                            onClick={() => handleGrantAccess(req._id, true)}/>
                         </Tooltip>
                         <Tooltip label="Deny — emails user">
-                          <IconButton icon={<MdClose />} size="sm" colorScheme="red" variant="outline"
-                            aria-label="Deny" onClick={() => handleGrantAccess(req._id, false)} />
+                          <IconButton icon={<MdClose size={14}/>} size="sm" colorScheme="red"
+                            variant="outline" aria-label="Deny"
+                            onClick={() => handleGrantAccess(req._id, false)}/>
                         </Tooltip>
                       </HStack>
                     </Flex>
@@ -1086,27 +1079,34 @@ export default function DocumentsPage() {
         </ModalContent>
       </Modal>
 
-      {/* ── MODAL: Single Request (email link) ──────────────────────────── */}
+
+      {/* ── MODAL: Single Request (email link) ───────────────────────────── */}
       <Modal isOpen={isFocusOpen} onClose={onFocusClose} isCentered size="md">
-        <ModalOverlay />
+        <ModalOverlay/>
         <ModalContent bg={cardBg}>
-          <ModalHeader color={textColor}><Flex align="center" gap={2}><MdLockOpen /> Access Request</Flex></ModalHeader>
-          <ModalCloseButton />
+          <ModalHeader color={textColor}>
+            <Flex align="center" gap={2}><MdLockOpen size={18}/> Access Request</Flex>
+          </ModalHeader>
+          <ModalCloseButton/>
           <ModalBody>
             {focusedRequest ? (
-              <Box p={4} borderRadius="lg" border={`1px solid ${reqBdr}`} bg={reqBg}>
+              <Box p={4} borderRadius="lg" border={`1px solid`} borderColor={reqBdr} bg={reqBg}>
                 <Flex align="center" gap={2} mb={2}>
-                  <Avatar name={focusedRequest.user?.name} size="sm" bg="brand.500" color="white" />
+                  <Avatar name={focusedRequest.user?.name} size="sm" bg="brand.500" color="white"/>
                   <Box>
-                    <Text fontWeight="700" fontSize="sm" color={textColor}>{focusedRequest.user?.name}</Text>
+                    <Text fontWeight="700" fontSize="sm" color={textColor}>
+                      {focusedRequest.user?.name}
+                    </Text>
                     <Badge colorScheme="gray" fontSize="xs">{focusedRequest.user?.email}</Badge>
                   </Box>
                 </Flex>
                 <Text fontSize="sm" color={subColor} mb={1}>
-                  Wants access to: <strong style={{ color: textColor }}>{focusedRequest.document?.title}</strong>
+                  Wants access to: <strong style={{ color:textColor }}>{focusedRequest.document?.title}</strong>
                 </Text>
                 {focusedRequest.document?.project?.name && (
-                  <Text fontSize="xs" color={subColor} mb={2}>📁 {focusedRequest.document.project.name}</Text>
+                  <Text fontSize="xs" color={subColor} mb={2}>
+                    {focusedRequest.document.project.name}
+                  </Text>
                 )}
                 {focusedRequest.message && (
                   <Box mt={2} p={3} bg={cardBg} borderRadius="md" border={`1px solid ${borderColor}`}>
@@ -1116,16 +1116,16 @@ export default function DocumentsPage() {
                 )}
               </Box>
             ) : (
-              <Flex justify="center" py={6}><Spinner color="brand.500" /></Flex>
+              <Flex justify="center" py={6}><Spinner color="brand.500"/></Flex>
             )}
           </ModalBody>
           <ModalFooter gap={3}>
             <Button variant="ghost" onClick={onFocusClose}>Cancel</Button>
-            <Button colorScheme="red" variant="outline" leftIcon={<MdClose />}
+            <Button colorScheme="red" variant="outline" leftIcon={<MdClose size={14}/>}
               onClick={async () => { await handleGrantAccess(focusedRequest._id, false); onFocusClose(); }}>
               Deny
             </Button>
-            <Button colorScheme="green" leftIcon={<MdCheck />}
+            <Button colorScheme="green" leftIcon={<MdCheck size={14}/>}
               onClick={async () => { await handleGrantAccess(focusedRequest._id, true); onFocusClose(); }}>
               Approve
             </Button>

@@ -26,6 +26,8 @@ import ProjectDetail from "./pages/project/ProjectDetail";
 import TeamPage from "./pages/Team/TeamPage";
 import IssuesPage from "./pages/tasks/IssuesPage";
 import DocumentsPage from "./pages/documents/Documentspage";
+import DocumentEditor from "./pages/documents/Documenteditor";
+import DocumentViewer from "./pages/documents/Documentviewer";
 import GoPage from "./pages/GoPage";
 
 function App() {
@@ -80,7 +82,13 @@ function App() {
 
           <Route path="team" element={<TeamPage />} />
           <Route path="issues" element={<IssuesPage />} />
-          <Route path="documents" element={<DocumentsPage />} />
+
+          <Route path="documents">
+            <Route index element={<DocumentsPage />} />
+            <Route path="editor" element={<DocumentEditor />} />
+            <Route path="editor/:id" element={<DocumentEditor />} />
+            <Route path="view/:id" element={<DocumentViewer />} />
+          </Route>
         </Route>
 
         <Route path="/go" element={<GoPage />} />

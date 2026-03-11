@@ -1,74 +1,316 @@
-import { useState, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
-  Box, Flex, Heading, Button, Select, Text, Alert, AlertIcon,
-  AlertDescription, useColorModeValue, Input, IconButton,
-  HStack, Progress, VStack, Badge, Divider,
+  Box, Flex, Heading, Text, Badge, Avatar, Spinner, Button,
+  Modal, ModalOverlay, ModalContent, ModalHeader, ModalCloseButton,
+  ModalBody, ModalFooter, useDisclosure, Input, Textarea, Select,
+  useToast, IconButton, Table, Thead, Tbody, Tr, Th, Td,
+  TableContainer, Grid, Tooltip, Alert, AlertIcon, AlertDescription,
+  useColorModeValue, FormControl, FormErrorMessage, FormLabel,
+  HStack, VStack, Progress,
 } from "@chakra-ui/react";
 import {
-  MdUploadFile, MdDownload, MdArrowBack, MdDeleteSweep,
-  MdCheckCircle, MdCloudUpload,
+  MdAdd, MdDelete, MdEdit, MdBugReport, MdCheckCircle,
+  MdUploadFile, MdDownload, MdDeleteSweep, MdCloudUpload,
 } from "react-icons/md";
-import { useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx";
 import api from "../../api";
 import { useAuth } from "../../context/AuthContext";
 
-export default function BulkUploadTask() {
-  const navigate = useNavigate();
-  const { selectedProject, projects } = useAuth();
+// ─── constants ────────────────────────────────────────────────────────────────
+const priorityColors = { low:"green", medium:"yellow", high:"orange", critical:"red" };
+const severityColors = { minor:"green", moderate:"yellow", major:"orange", critical:"red" };
+const statusColor = (name = "") => {
+  const n = name.toLowerCase();
+  if (n.includes("done") || n.includes("complete") || n.includes("closed")) return "green";
+  if (n.includes("progress") || n.includes("active")) return "blue";
+  if (n.includes("review") || n.includes("test")) return "purple";
+  if (n.includes("block") || n.includes("hold")) return "red";
+  return "gray";
+};
+const SAFE_NAME = /^[a-zA-Z0-9 .,\-_:!?()\n\r]*$/;
+const SAFE_DESC = /^[a-zA-Z0-9 .,\-_:!?()@#/\n\r]*$/;
+const todayStr  = () => new Date().toISOString().split("T")[0];
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+const CHUNK_SIZE = 5_000; // rows per request — safe for any proxy/tunnel
+const EMPTY = {
+  name:"", description:"", taskStatus:"", assignee:"",
+  priority:"medium", issueType:"bug", severity:"minor",
+  dueDate:"", createdDate: todayStr(),
+};
 
-  const [selectedProjectId, setSelectedProjectId] = useState(selectedProject?._id || "");
+export default function IssuesPage() {
+  // ── data ──────────────────────────────────────────────────────────────────
+  const [issues,   setIssues]   = useState([]);
+  const [total,    setTotal]    = useState(0);
+  const [pages,    setPages]    = useState(1);
+  const [page,     setPage]     = useState(1);
+  const [limit,    setLimit]    = useState(50);
+  const [staff,    setStaff]    = useState([]);
+  const [statuses, setStatuses] = useState([]);
+  const [loading,  setLoading]  = useState(true);
+  const [pageLoading, setPageLoading] = useState(false);
 
-  // File metadata — rows stored in ref, never state
-  const [fileName, setFileName]         = useState("");
-  const [fileReady, setFileReady]       = useState(false);
-  const [parseError, setParseError]     = useState("");
-  const [rowCount, setRowCount]         = useState(0);
-  const [skippedCount, setSkippedCount] = useState(0);
+  // ── form ──────────────────────────────────────────────────────────────────
+  const [form,     setForm]     = useState(EMPTY);
+  const [errors,   setErrors]   = useState({});
+  const [editId,   setEditId]   = useState(null);
+  const [saving,   setSaving]   = useState(false);
 
-  // Upload state
-  const [uploading, setUploading]       = useState(false);
-  const [totalCreated, setTotalCreated] = useState(0);
-  const [totalFailed, setTotalFailed]   = useState(0);
-  const [done, setDone]                 = useState(false);
-  const [progress, setProgress]         = useState(0);
+  // ── delete single ─────────────────────────────────────────────────────────
+  const [deleteId, setDeleteId] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
-  // Delete all
-  const [deletingAll, setDeletingAll]   = useState(false);
-  const [deleteAllMsg, setDeleteAllMsg] = useState("");
+  // ── delete all ────────────────────────────────────────────────────────────
+  const [deletingAll, setDeletingAll] = useState(false);
+  const [deleteMsg,   setDeleteMsg]   = useState(null);
 
-  const parsedRef    = useRef([]);
-  const fileInputRef = useRef(null);
-  const timerRef     = useRef(null);
+  // ── new issue alert ───────────────────────────────────────────────────────
+  const [showAlert, setShowAlert] = useState(false);
 
-  // ── Colors ────────────────────────────────────────────────────────────────
-  const cardBg      = useColorModeValue("white", "gray.800");
-  const textColor   = useColorModeValue("gray.800", "white");
-  const subColor    = useColorModeValue("gray.500", "gray.400");
-  const borderColor = useColorModeValue("#e5e7eb", "#4a5568");
-  const uploadBoxBg = useColorModeValue("gray.50", "gray.750");
-  const uploadBdr   = useColorModeValue("#93c5fd", "#4a5568");
-  const infoBg      = useColorModeValue("blue.50", "blue.900");
-  const infoBdr     = useColorModeValue("#bee3f8", "#2a4365");
-  const infoClr     = useColorModeValue("blue.700", "blue.200");
+  // ── mention ───────────────────────────────────────────────────────────────
+  const [mQuery,   setMQuery]   = useState("");
+  const [mOpen,    setMOpen]    = useState(false);
+  const [mPos,     setMPos]     = useState(0);
+  const [mentions, setMentions] = useState([]);
+  const taRef = useRef(null);
 
-  // ── Reset ─────────────────────────────────────────────────────────────────
-  const reset = () => {
-    clearInterval(timerRef.current);
-    setFileName(""); setFileReady(false); setParseError("");
-    setRowCount(0); setSkippedCount(0);
-    setUploading(false); setTotalCreated(0); setTotalFailed(0);
-    setDone(false); setProgress(0);
-    parsedRef.current = [];
+  // ── bulk ──────────────────────────────────────────────────────────────────
+  const [bulkFile,      setBulkFile]      = useState(null);
+  const [bulkRows,      setBulkRows]      = useState(0);
+  const [bulkSkipped,   setBulkSkipped]   = useState(0);
+  const [bulkReady,     setBulkReady]     = useState(false);
+  const [bulkError,     setBulkError]     = useState("");
+  const [bulkUploading, setBulkUploading] = useState(false);
+  const [bulkProgress,  setBulkProgress]  = useState(0);
+  const [bulkResult,    setBulkResult]    = useState(null);
+  const [bulkDone,      setBulkDone]      = useState(false);
+  const bulkParsedRef  = useRef([]);   // stores parsed rows
+  const bulkProjectRef = useRef(null);
+  const fileInputRef   = useRef(null);
+
+  // ── modals ────────────────────────────────────────────────────────────────
+  const { isOpen,       onOpen,       onClose      } = useDisclosure();
+  const { isOpen: isDel,  onOpen: onDelOpen,  onClose: onDelClose  } = useDisclosure();
+  const { isOpen: isBulk, onOpen: onBulkOpen, onClose: onBulkClose } = useDisclosure();
+
+  const toast = useToast();
+  const { user, hasPermission, selectedProject } = useAuth();
+  const isAdmin   = user?.role?.name?.toLowerCase() === "admin";
+  const canRead   = isAdmin || hasPermission("issues_read");
+  const canCreate = isAdmin || hasPermission("issues_create");
+  const canUpdate = isAdmin || hasPermission("issues_update");
+  const canDelete = isAdmin || hasPermission("issues_delete");
+
+  // ── colors ────────────────────────────────────────────────────────────────
+  const cardBg  = useColorModeValue("white","gray.800");
+  const thead   = useColorModeValue("#fee2e2","#742a2a");
+  const tColor  = useColorModeValue("gray.700","white");
+  const text    = useColorModeValue("gray.800","white");
+  const sub     = useColorModeValue("gray.500","gray.400");
+  const erow    = useColorModeValue("white","gray.800");
+  const orow    = useColorModeValue("gray.50","gray.750");
+  const hrow    = useColorModeValue("red.50","gray.700");
+  const border  = useColorModeValue("#e2e8f0","#4a5568");
+  const iconBg  = useColorModeValue("red.100","red.900");
+  const blueBg  = useColorModeValue("blue.50","blue.900");
+  const blueBdr = useColorModeValue("#bee3f8","#2a4365");
+  const blueClr = useColorModeValue("blue.700","blue.200");
+  const roBg    = useColorModeValue("gray.50","gray.700");
+  const ddBg    = useColorModeValue("white","gray.700");
+  const ddBdr   = useColorModeValue("#e2e8f0","#4a5568");
+  const ddHov   = useColorModeValue("red.50","gray.600");
+  const upBg    = useColorModeValue("gray.50","gray.750");
+  const grnBg   = useColorModeValue("green.50","green.900");
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CORE: server-side paginated fetch
+  // ═══════════════════════════════════════════════════════════════════════════
+  const fetchPage = useCallback(async (pg = 1, lim = limit, projectId = null) => {
+    setPageLoading(true);
+    try {
+      const params = new URLSearchParams({ page: pg, limit: lim });
+      if (projectId) params.set("project", projectId);
+      const res = await api.get(`/tasks/issues/all?${params}`);
+      setIssues(res.data.issues   || []);
+      setTotal(res.data.total     ?? 0);
+      setPages(res.data.pages     ?? 1);
+      setPage(res.data.page       ?? 1);
+    } catch (err) {
+      console.error("fetchPage:", err);
+    } finally {
+      setPageLoading(false);
+    }
+  }, [limit]);
+
+  // ── mount ─────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!canRead) { setLoading(false); return; }
+    Promise.all([
+      api.get("/staff"),
+      api.get("/task-status"),
+      api.get(`/tasks/issues/all?page=1&limit=${limit}${selectedProject?._id ? `&project=${selectedProject._id}` : ""}`),
+    ]).then(([s, st, i]) => {
+      setStaff(s.data || []);
+      setStatuses(st.data || []);
+      setIssues(i.data.issues || []);
+      setTotal(i.data.total  ?? 0);
+      setPages(i.data.pages  ?? 1);
+    }).catch(console.error).finally(() => setLoading(false));
+  }, [canRead]);
+
+  // ── re-fetch on project change ────────────────────────────────────────────
+  const prevProject = useRef(null);
+  useEffect(() => {
+    const newId = selectedProject?._id || null;
+    if (prevProject.current === newId) return;
+    prevProject.current = newId;
+    if (!loading) fetchPage(1, limit, newId);
+  }, [selectedProject, loading, fetchPage, limit]);
+
+  if (!canRead) return (
+    <Box p={6}><Alert status="error" borderRadius="md">
+      <AlertIcon/><AlertDescription>No permission to view issues.</AlertDescription>
+    </Alert></Box>
+  );
+  if (loading) return <Flex justify="center" py={20}><Spinner size="xl" color="red.500"/></Flex>;
+
+  const projectId = selectedProject?._id || null;
+  const startIdx  = (page - 1) * limit;
+
+  // ── page navigation ───────────────────────────────────────────────────────
+  const goToPage = (pg) => {
+    if (pg < 1 || pg > pages || pg === page) return;
+    fetchPage(pg, limit, projectId);
+  };
+
+  // ── mention ───────────────────────────────────────────────────────────────
+  const handleDesc = (e) => {
+    const v = e.target.value;
+    if (v && !SAFE_DESC.test(v)) return;
+    setForm(p => ({...p, description: v}));
+    setErrors(p => ({...p, description: undefined}));
+    const c = e.target.selectionStart;
+    const at = v.slice(0, c).lastIndexOf("@");
+    if (at !== -1 && !v.slice(at+1, c).includes(" ")) {
+      setMQuery(v.slice(at+1, c).toLowerCase()); setMPos(at); setMOpen(true);
+    } else setMOpen(false);
+  };
+  const fStaff = staff.filter(s => s.name.toLowerCase().includes(mQuery));
+  const insertMention = (s) => {
+    const before = form.description.slice(0, mPos);
+    const after  = form.description.slice(taRef.current.selectionStart);
+    setForm(p => ({...p, description: `${before}@${s.name} ${after}`}));
+    setMentions(p => [...new Set([...p, s.name])]);
+    setMOpen(false); taRef.current.focus();
+  };
+
+  // ── validation ────────────────────────────────────────────────────────────
+  const validate = () => {
+    const e = {};
+    if (!form.name.trim())                       e.name        = "Issue name is required.";
+    else if (!SAFE_NAME.test(form.name))         e.name        = "No special characters.";
+    if (!form.description.trim())                e.description = "Description is required.";
+    else if (!SAFE_DESC.test(form.description))  e.description = "No special characters.";
+    if (!form.assignee)                          e.assignee    = "Assignee is required.";
+    if (!form.dueDate)                           e.dueDate     = "Due date is required.";
+    return e;
+  };
+
+  const resetModal = () => {
+    setForm({...EMPTY, createdDate: todayStr()});
+    setEditId(null); setErrors({});
+    setMentions([]); setMOpen(false); setMQuery("");
+  };
+
+  const openNew = () => {
+    if (!selectedProject) { setShowAlert(true); setTimeout(() => setShowAlert(false), 4000); return; }
+    setShowAlert(false); resetModal(); onOpen();
+  };
+
+  const openEdit = (issue) => {
+    setForm({
+      name:        issue.name,
+      description: issue.description,
+      taskStatus:  issue.taskStatus?._id || "",
+      assignee:    issue.assignee?._id   || "",
+      priority:    issue.priority        || "medium",
+      issueType:   "bug",
+      severity:    issue.severity        || "minor",
+      dueDate:     issue.dueDate         ? issue.dueDate.split("T")[0]     : "",
+      createdDate: issue.createdDate     ? issue.createdDate.split("T")[0] : todayStr(),
+    });
+    setEditId(issue._id); setErrors({});
+    setMentions([]); setMOpen(false); onOpen();
+  };
+
+  // ── save ──────────────────────────────────────────────────────────────────
+  const handleSave = async () => {
+    const e = validate();
+    if (Object.keys(e).length) { setErrors(e); return; }
+    setSaving(true);
+    try {
+      const payload = {...form, issueType:"bug", project: projectId};
+      if (editId) {
+        const res = await api.put(`/tasks/issues/${editId}`, payload);
+        setIssues(p => p.map(i => i._id === editId ? res.data : i));
+        toast({title:"Issue updated!", status:"success", duration:2000});
+      } else {
+        await api.post("/tasks/issues/create", payload);
+        toast({title:"Issue created!", status:"success", duration:2000});
+        fetchPage(1, limit, projectId);
+      }
+      onClose(); resetModal();
+    } catch { toast({title:"Failed to save", status:"error", duration:2000}); }
+    finally { setSaving(false); }
+  };
+
+  // ── delete single ─────────────────────────────────────────────────────────
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await api.delete(`/tasks/${deleteId}`);
+      const remaining = issues.filter(i => i._id !== deleteId);
+      if (remaining.length === 0 && page > 1) {
+        fetchPage(page - 1, limit, projectId);
+      } else {
+        setIssues(remaining);
+        setTotal(t => t - 1);
+      }
+      toast({title:"Deleted", status:"info", duration:2000});
+      onDelClose(); setDeleteId(null);
+    } catch { toast({title:"Failed to delete", status:"error", duration:2000}); }
+    finally { setDeleting(false); }
+  };
+
+  // ── delete all ────────────────────────────────────────────────────────────
+  const handleDeleteAll = async () => {
+    if (!window.confirm("Delete ALL issues? This cannot be undone.")) return;
+    setDeletingAll(true); setDeleteMsg(null);
+    try {
+      const res = await api.delete("/tasks/issues/all");
+      setIssues([]); setTotal(0); setPages(1); setPage(1);
+      setDeleteMsg({ type:"info", text:`Deleted ${res.data.deleted.toLocaleString()} issue(s).` });
+    } catch {
+      setDeleteMsg({ type:"error", text:"Failed to delete all issues." });
+    } finally { setDeletingAll(false); }
+  };
+
+  // ── bulk reset ────────────────────────────────────────────────────────────
+  const resetBulk = () => {
+    setBulkFile(null); setBulkRows(0); setBulkSkipped(0);
+    setBulkReady(false); setBulkError(""); setBulkUploading(false);
+    setBulkProgress(0); setBulkResult(null); setBulkDone(false);
+    bulkParsedRef.current  = [];
+    bulkProjectRef.current = null;
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  // ── Parse xlsx ────────────────────────────────────────────────────────────
-  const handleFileChange = (e) => {
+  // ── bulk: pick + parse file on frontend ───────────────────────────────────
+  const handleFilePick = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    reset();
-    setFileName(file.name);
+    resetBulk();
+    setBulkFile(file);
 
     const reader = new FileReader();
     reader.onload = (evt) => {
@@ -77,303 +319,528 @@ export default function BulkUploadTask() {
         const ws  = wb.Sheets[wb.SheetNames[0]];
         const raw = XLSX.utils.sheet_to_json(ws, { defval: "" });
 
-        let valid = 0, skipped = 0;
         const rows = [];
+        let skip = 0;
 
         for (const row of raw) {
-          const norm = {};
-          Object.keys(row).forEach(k => { norm[k.trim().toLowerCase()] = row[k]; });
+          const r = Object.fromEntries(Object.entries(row).map(([k,v]) => [k.trim().toLowerCase(), v]));
+          const name   = String(r.name || r.title || r["issue name"] || "").trim();
+          const assign = String(r.assignee || r["assigned to"] || r.staff || "").trim();
+          if (!name || !assign) { skip++; continue; }
 
-          const name   = String(norm["name"] || norm["title"] || norm["task name"] || "").trim();
-          const desc   = String(norm["description"] || norm["desc"] || "").trim();
-          const assign = String(norm["assignee"] || norm["assigned to"] || norm["staff"] || "").trim();
-          const status = String(norm["status"] || norm["task status"] || "").trim();
+          const dv = r["due date"] || r.duedate || r.due || "";
+          let dueDate = null;
+          if (dv) {
+            const d = typeof dv === "number"
+              ? new Date(Math.round((dv - 25569) * 86400000))
+              : new Date(dv);
+            if (!isNaN(d)) dueDate = d.toISOString().split("T")[0];
+          }
+          const priority = String(r.priority || "medium").toLowerCase();
+          const severity = String(r.severity || "minor").toLowerCase();
 
-          if (!name || !assign) { skipped++; continue; }
-
-          rows.push({ name, description: desc, assigneeName: assign, statusName: status });
-          valid++;
+          rows.push({
+            name,
+            assigneeName: assign,
+            description: String(r.description || r.desc || "").trim(),
+            statusName:  String(r.status || r["task status"] || "").trim(),
+            priority:  ["low","medium","high","critical"].includes(priority) ? priority : "medium",
+            severity:  ["minor","moderate","major","critical"].includes(severity) ? severity : "minor",
+            issueType: "bug",
+            dueDate,
+          });
         }
 
-        if (valid === 0) {
-          setParseError("No valid rows found. Make sure the file has 'name' and 'assignee' columns.");
-          return;
+        if (rows.length === 0) {
+          setBulkError("No valid rows. File must have 'name' and 'assignee' columns.");
+          setBulkFile(null); return;
         }
 
-        parsedRef.current = rows;
-        setRowCount(valid);
-        setSkippedCount(skipped);
-        setFileReady(true);
+        bulkParsedRef.current = rows;
+        setBulkRows(rows.length);
+        setBulkSkipped(skip);
+        setBulkReady(true);
       } catch {
-        setParseError("Failed to parse file. Make sure it's a valid .xlsx or .xls file.");
+        setBulkError("Cannot read file. Must be a valid .xlsx or .xls file.");
+        setBulkFile(null);
       }
     };
     reader.readAsBinaryString(file);
     e.target.value = "";
   };
 
-  // ── Delete all ────────────────────────────────────────────────────────────
-  const handleDeleteAll = async () => {
-    if (!window.confirm("Delete ALL tasks? This cannot be undone.")) return;
-    setDeletingAll(true); setDeleteAllMsg("");
-    try {
-      const res = await api.delete("/tasks/all");
-      setDeleteAllMsg("deleted:" + res.data.deleted);
-    } catch {
-      setDeleteAllMsg("error");
-    } finally { setDeletingAll(false); }
-  };
-
-  // ── Upload — ONE API call, animated progress ─────────────────────────────
-  // Single POST with ALL rows. MongoDB insertMany handles 200k rows in ~1-2s.
-  // Progress animates 0→95 while waiting, snaps to 100 on response.
-  const handleUpload = async () => {
-    const rows = parsedRef.current;
+  // ── bulk upload: chunked JSON — no raw file sent ──────────────────────────
+  const handleBulkUpload = async () => {
+    const rows = bulkParsedRef.current;
     if (!rows.length) return;
 
-    clearInterval(timerRef.current);
-    setUploading(true);
-    setDone(false);
-    setProgress(0);
-    setTotalCreated(0);
-    setTotalFailed(0);
+    bulkProjectRef.current = projectId;
+    setBulkUploading(true); setBulkDone(false);
+    setBulkProgress(0); setBulkResult(null);
 
-    // Animate 0 → 95 in ~2s (66 steps × 30ms = ~2s)
-    let animPct = 0;
-    timerRef.current = setInterval(() => {
-      animPct = Math.min(animPct + 1.43, 95);
-      setProgress(+animPct.toFixed(1));
-      if (animPct >= 95) clearInterval(timerRef.current);
-    }, 30);
+    // Split into 5000-row chunks — each ~200KB JSON, safe for devtunnel
+    const chunks = [];
+    for (let i = 0; i < rows.length; i += CHUNK_SIZE)
+      chunks.push(rows.slice(i, i + CHUNK_SIZE));
 
-    try {
-      const res = await api.post("/tasks/bulk", {
-        tasks:   rows,
-        project: selectedProjectId || null,
-      });
-      clearInterval(timerRef.current);
-      setProgress(100);
-      setTotalCreated(res.data.created || 0);
-      setTotalFailed(res.data.failed   || 0);
-    } catch {
-      clearInterval(timerRef.current);
-      setProgress(100);
-      setTotalFailed(rows.length);
+    let totalCreated = 0, totalFailed = 0, totalDupes = 0, unmatched = [];
+
+    for (let i = 0; i < chunks.length; i++) {
+      try {
+        const res = await api.post("/tasks/issues/bulk", {
+          issues:  chunks[i],
+          project: bulkProjectRef.current || null,
+        }, { timeout: 120_000 });
+
+        totalCreated += res.data.created    || 0;
+        totalFailed  += res.data.failed     || 0;
+        totalDupes   += res.data.duplicates || 0;
+        if (res.data.unmatchedAssignees?.length)
+          unmatched = [...new Set([...unmatched, ...res.data.unmatchedAssignees])];
+      } catch {
+        totalFailed += chunks[i].length;
+      }
+      setBulkProgress(Math.round(((i + 1) / chunks.length) * 100));
     }
 
-    setUploading(false);
-    setDone(true);
+    setBulkResult({
+      created:    totalCreated,
+      failed:     totalFailed,
+      duplicates: totalDupes,
+      unmatched:  unmatched.slice(0, 10),
+    });
+
+    if (totalCreated > 0) fetchPage(1, limit, bulkProjectRef.current);
+
+    setBulkUploading(false);
+    setBulkDone(true);
   };
 
-  // ── Sample download ───────────────────────────────────────────────────────
   const downloadSample = () => {
-    const sample = [
-      { name: "Design landing page",  description: "Create wireframes",       assignee: "John Doe",   status: "Pending"     },
-      { name: "Fix login bug",        description: "Token not refreshing",    assignee: "Jane Smith", status: "In Progress" },
-      { name: "Write API docs",       description: "Document all endpoints",  assignee: "John Doe",   status: "Pending"     },
-    ];
-    const ws = XLSX.utils.json_to_sheet(sample);
+    const ws = XLSX.utils.json_to_sheet([
+      {name:"Login button broken",  description:"Fails on Safari",     assignee:"John Doe",   status:"Pending",    priority:"high",     severity:"major",   "due date":"2026-04-15"},
+      {name:"Dashboard crash",      description:"TypeError useEffect", assignee:"Jane Smith", status:"In Progress",priority:"critical", severity:"critical","due date":"2026-04-10"},
+    ]);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Tasks");
-    XLSX.writeFile(wb, "bulk_tasks_sample.xlsx");
+    XLSX.utils.book_append_sheet(wb, ws, "Issues");
+    XLSX.writeFile(wb, "bulk_issues_sample.xlsx");
   };
 
-  return (
-    <Box maxW="560px" mx="auto">
-      <Box bg={cardBg} borderRadius="xl" boxShadow="md" overflow="hidden">
+  const pOpts = ["low","medium","high","critical"];
+  const sOpts = ["minor","moderate","major","critical"];
 
-        {/* ── Header ───────────────────────────────────────────────────── */}
-        <Box px={6} py={4} borderBottom={`1px solid ${borderColor}`}>
-          <Flex justify="space-between" align="center">
-            <HStack spacing={3}>
-              <IconButton icon={<MdArrowBack size={18} />} size="sm" variant="ghost"
-                aria-label="Back" onClick={() => navigate("/admin/tasks")} />
-              <Box>
-                <Heading size="md" color={textColor}>Bulk Upload Tasks</Heading>
-                <Text fontSize="xs" color={subColor} mt={0.5}>
-                  Upload thousands of tasks instantly
-                </Text>
-              </Box>
+  // ═══════════════════════════════════════════════════════════════════════════
+  return (
+    <Box>
+
+      {/* HEADER */}
+      <Box bg={cardBg} p={6} borderRadius="xl" boxShadow="md" mb={4}>
+        <Flex justify="space-between" align="center" wrap="wrap" gap={3}>
+          <Flex align="center" gap={3}>
+            <Box bg={iconBg} p={3} borderRadius="lg"><MdBugReport size={26} color="#c53030"/></Box>
+            <Box>
+              <Heading size="md" color={text}>Issues</Heading>
+              <Text fontSize="sm" color={sub}>
+                {selectedProject
+                  ? `📁 ${selectedProject.name} · ${total.toLocaleString()} issues`
+                  : `All projects · ${total.toLocaleString()} issues`}
+              </Text>
+            </Box>
+          </Flex>
+          {canCreate && (
+            <HStack spacing={2} flexWrap="wrap">
+              <Button leftIcon={<MdUploadFile size={16}/>} colorScheme="gray" variant="outline" size="sm"
+                onClick={() => { resetBulk(); onBulkOpen(); }}>Bulk Upload</Button>
+              <Button leftIcon={<MdDeleteSweep size={17}/>} colorScheme="red" variant="outline" size="sm"
+                onClick={handleDeleteAll} isLoading={deletingAll} loadingText="Deleting…">Delete All</Button>
+              <Button leftIcon={<MdAdd/>} colorScheme="red" size="sm" onClick={openNew}>New Issue</Button>
             </HStack>
+          )}
+        </Flex>
+      </Box>
+
+      {/* ALERTS */}
+      {showAlert && (
+        <Alert status="warning" borderRadius="xl" mb={4}>
+          <AlertIcon/>
+          <AlertDescription fontWeight="500" flex={1}>Please select a project first.</AlertDescription>
+          <Button size="xs" variant="ghost" onClick={() => setShowAlert(false)}>✕</Button>
+        </Alert>
+      )}
+      {deleteMsg && (
+        <Alert status={deleteMsg.type} borderRadius="xl" mb={4}>
+          <AlertIcon/>
+          <AlertDescription fontSize="sm" flex={1}>{deleteMsg.text}</AlertDescription>
+          <Button size="xs" variant="ghost" onClick={() => setDeleteMsg(null)}>✕</Button>
+        </Alert>
+      )}
+
+      {/* EMPTY state */}
+      {total === 0 && !pageLoading && (
+        <Flex direction="column" align="center" justify="center" py={16}
+          bg="green.50" borderRadius="xl" border="1px solid" borderColor="green.200"
+          _dark={{bg:"green.900", borderColor:"green.600"}}>
+          <MdCheckCircle size={52} color="#38a169"/>
+          <Heading size="md" color="green.700" _dark={{color:"green.200"}} mt={3}>No Bugs Found</Heading>
+          <Text fontSize="sm" color="green.600" mt={1}>
+            {selectedProject ? `No issues for ${selectedProject.name}` : "No issues yet"}
+          </Text>
+          {canCreate && (
+            <Button mt={4} size="sm" colorScheme="red" leftIcon={<MdAdd/>} onClick={openNew}>
+              Report an Issue
+            </Button>
+          )}
+        </Flex>
+      )}
+
+      {/* TABLE */}
+      {(total > 0 || pageLoading) && (
+        <Box bg={cardBg} borderRadius="xl" boxShadow="md" border={`1px solid ${border}`} overflow="hidden">
+          {pageLoading && <Progress size="xs" isIndeterminate colorScheme="red" borderRadius="xl"/>}
+          <TableContainer>
+            <Table variant="simple" size="sm">
+              <Thead bg={thead}>
+                <Tr>
+                  {["#","Issue","Priority","Severity","Status","Assignee","Project","Created","Due Date",
+                    ...(canUpdate||canDelete ? ["Actions"] : [])].map(h => (
+                    <Th key={h} color={tColor} fontSize="xs" py={3} textAlign={h==="Actions"?"right":"left"}>{h}</Th>
+                  ))}
+                </Tr>
+              </Thead>
+              <Tbody>
+                {pageLoading
+                  ? Array.from({length: 5}).map((_,i) => (
+                      <Tr key={i}>
+                        {Array.from({length: 9}).map((_,j) => (
+                          <Td key={j}><Box h="12px" bg="gray.100" borderRadius="sm" _dark={{bg:"gray.700"}} w={j===1?"140px":"60px"}/></Td>
+                        ))}
+                      </Tr>
+                    ))
+                  : issues.map((issue, idx) => (
+                    <Tr key={issue._id} bg={idx%2===0?erow:orow} _hover={{bg:hrow}} transition="background 0.15s">
+                      <Td color={sub} fontSize="xs">{startIdx + idx + 1}</Td>
+                      <Td py={3} maxW="220px">
+                        <Badge colorScheme="red" borderRadius="full" fontSize="9px" px={2} mb={1}>bug</Badge>
+                        <Text fontWeight="600" fontSize="sm" color={text} noOfLines={1}>{issue.name}</Text>
+                        <Text fontSize="xs" color={sub} noOfLines={1}>{issue.description}</Text>
+                      </Td>
+                      <Td>{issue.priority && <Badge colorScheme={priorityColors[issue.priority]} borderRadius="full" fontSize="xs" px={2} textTransform="capitalize">{issue.priority}</Badge>}</Td>
+                      <Td>{issue.severity && <Badge colorScheme={severityColors[issue.severity]} borderRadius="full" fontSize="xs" px={2} textTransform="capitalize">{issue.severity}</Badge>}</Td>
+                      <Td>{issue.taskStatus?.name && <Badge colorScheme={statusColor(issue.taskStatus.name)} borderRadius="full" fontSize="xs" px={2}>{issue.taskStatus.name}</Badge>}</Td>
+                      <Td><Flex align="center" gap={2}><Avatar name={issue.assignee?.name} size="xs" bg="red.400" color="white"/><Text fontSize="xs" color={text} whiteSpace="nowrap">{issue.assignee?.name}</Text></Flex></Td>
+                      <Td><Text fontSize="xs" color={sub} noOfLines={1}>{issue.project?.name ? `📁 ${issue.project.name}` : "—"}</Text></Td>
+                      <Td><Text fontSize="xs" color={sub} whiteSpace="nowrap">{new Date(issue.createdDate||issue.createdAt||Date.now()).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</Text></Td>
+                      <Td>
+                        <Text fontSize="xs" whiteSpace="nowrap"
+                          color={issue.dueDate && new Date(issue.dueDate) < new Date() ? "red.500" : sub}
+                          fontWeight={issue.dueDate && new Date(issue.dueDate) < new Date() ? "600" : "400"}>
+                          {issue.dueDate ? new Date(issue.dueDate).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"}) : "—"}
+                        </Text>
+                      </Td>
+                      {(canUpdate||canDelete) && (
+                        <Td textAlign="right">
+                          <Flex justify="flex-end" gap={1}>
+                            {canUpdate && <Tooltip label="Edit"><IconButton icon={<MdEdit/>} size="xs" colorScheme="blue" variant="ghost" aria-label="Edit" onClick={() => openEdit(issue)}/></Tooltip>}
+                            {canDelete && <Tooltip label="Delete"><IconButton icon={<MdDelete/>} size="xs" colorScheme="red" variant="ghost" aria-label="Delete" onClick={() => { setDeleteId(issue._id); onDelOpen(); }}/></Tooltip>}
+                          </Flex>
+                        </Td>
+                      )}
+                    </Tr>
+                  ))
+                }
+              </Tbody>
+            </Table>
+          </TableContainer>
+
+          {/* PAGINATION */}
+          <Flex px={4} py={3} justify="space-between" align="center" borderTop={`1px solid ${border}`} flexWrap="wrap" gap={2}>
+            <Text fontSize="sm" color={sub} minW="140px">
+              {total > 0 ? `${(startIdx+1).toLocaleString()}–${Math.min(startIdx+limit,total).toLocaleString()} of ${total.toLocaleString()}` : "0 issues"}
+            </Text>
             <HStack spacing={2}>
-              <Button size="sm" leftIcon={<MdDownload size={14} />} variant="outline"
-                colorScheme="blue" onClick={downloadSample} isDisabled={uploading}>
-                Sample
-              </Button>
-              <Button size="sm" leftIcon={<MdDeleteSweep size={16} />} colorScheme="red"
-                variant="outline" onClick={handleDeleteAll} isLoading={deletingAll}
-                loadingText="Deleting…" isDisabled={uploading}>
-                Delete All
-              </Button>
+              <Text fontSize="sm" color={text} whiteSpace="nowrap">Rows/page</Text>
+              <Select size="sm" w="80px" value={limit}
+                onChange={e => { const lim = Number(e.target.value); setLimit(lim); fetchPage(1, lim, projectId); }}>
+                {PAGE_SIZE_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
+              </Select>
+            </HStack>
+            <HStack spacing={1}>
+              <Button size="sm" onClick={() => goToPage(1)} isDisabled={page===1||pageLoading}>«</Button>
+              <Button size="sm" onClick={() => goToPage(page-1)} isDisabled={page===1||pageLoading}>‹</Button>
+              {Array.from({length: Math.min(5, pages)}, (_, i) => {
+                let p;
+                if (pages <= 5) p = i + 1;
+                else if (page <= 3) p = i + 1;
+                else if (page >= pages - 2) p = pages - 4 + i;
+                else p = page - 2 + i;
+                return (
+                  <Button key={p} size="sm"
+                    colorScheme={p === page ? "red" : "gray"}
+                    variant={p === page ? "solid" : "ghost"}
+                    onClick={() => goToPage(p)}
+                    isDisabled={pageLoading} minW="36px">{p}</Button>
+                );
+              })}
+              <Button size="sm" onClick={() => goToPage(page+1)} isDisabled={page===pages||pageLoading}>›</Button>
+              <Button size="sm" onClick={() => goToPage(pages)} isDisabled={page===pages||pageLoading}>»</Button>
             </HStack>
           </Flex>
         </Box>
+      )}
 
-        <Box px={6} py={5}>
-          <VStack spacing={5} align="stretch">
-
-            {/* Delete All result */}
-            {deleteAllMsg && (
-              <Alert status={deleteAllMsg.startsWith("deleted") ? "info" : "error"} borderRadius="lg">
-                <AlertIcon />
-                <AlertDescription fontSize="sm">
-                  {deleteAllMsg.startsWith("deleted")
-                    ? `Deleted ${deleteAllMsg.split(":")[1]} task(s) successfully.`
-                    : "Failed to delete tasks. Please try again."}
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {/* Step 1 — Project */}
-            <Box>
-              <Flex align="center" gap={2} mb={2}>
-                <Box w={5} h={5} borderRadius="full" bg="blue.500" color="white"
-                  display="flex" alignItems="center" justifyContent="center"
-                  fontSize="10px" fontWeight="700">1</Box>
-                <Text fontSize="sm" fontWeight="600" color={textColor}>Select Project (optional)</Text>
-              </Flex>
-              <Select placeholder="No project" value={selectedProjectId}
-                onChange={e => setSelectedProjectId(e.target.value)} isDisabled={uploading}>
-                {(projects || []).map(p => <option key={p._id} value={p._id}>{p.name}</option>)}
-              </Select>
-            </Box>
-
-            <Divider />
-
-            {/* Step 2 — File */}
-            <Box>
-              <Flex align="center" gap={2} mb={2}>
-                <Box w={5} h={5} borderRadius="full" bg="blue.500" color="white"
-                  display="flex" alignItems="center" justifyContent="center"
-                  fontSize="10px" fontWeight="700">2</Box>
-                <Text fontSize="sm" fontWeight="600" color={textColor}>Choose Excel File</Text>
-              </Flex>
-
-              {!uploading && !done && (
-                <Box p={8} borderRadius="xl" border={`2px dashed ${uploadBdr}`}
-                  bg={uploadBoxBg} cursor="pointer" textAlign="center"
-                  onClick={() => fileInputRef.current?.click()}
-                  _hover={{ borderColor: "blue.400", bg: "blue.50" }} transition="all 0.2s"
-                  _dark={{ _hover: { bg: "gray.700" } }}>
-                  <MdCloudUpload size={40} color="#63b3ed" style={{ margin: "0 auto 8px" }} />
-                  <Text fontWeight="600" color={textColor} fontSize="sm" mb={1}>
-                    {fileName ? `📄 ${fileName}` : "Click to browse .xlsx / .xls"}
-                  </Text>
-                  <Text fontSize="xs" color={subColor} mb={2}>
-                    Required: <b>name</b>, <b>assignee</b> &nbsp;·&nbsp; Optional: description, status
-                  </Text>
-                  <Box display="inline-block" px={3} py={1} bg={infoBg}
-                    border={`1px solid ${infoBdr}`} borderRadius="full">
-                    <Text fontSize="xs" color={infoClr} fontWeight="600">
-                      ⚡ Auto-batched upload — no size limits
-                    </Text>
-                  </Box>
-                  <Input ref={fileInputRef} type="file" accept=".xlsx,.xls"
-                    display="none" onChange={handleFileChange} />
-                </Box>
-              )}
-            </Box>
-
-            {/* Parse error */}
-            {parseError && (
-              <Alert status="error" borderRadius="lg">
-                <AlertIcon /><AlertDescription fontSize="sm">{parseError}</AlertDescription>
-              </Alert>
-            )}
-
-            {/* File ready — show counts + upload button */}
-            {fileReady && !uploading && !done && (
-              <Box p={4} borderRadius="xl" border={`1px solid ${borderColor}`} bg={uploadBoxBg}>
-                <Flex justify="space-between" align="flex-start">
-                  <VStack align="flex-start" spacing={1}>
-                    <HStack>
-                      <Badge colorScheme="green" borderRadius="full" px={3} py={1} fontSize="xs">
-                        ✅ {rowCount.toLocaleString()} rows ready
-                      </Badge>
-                      {skippedCount > 0 && (
-                        <Badge colorScheme="orange" borderRadius="full" px={3} py={1} fontSize="xs">
-                          ⚠ {skippedCount} skipped
-                        </Badge>
-                      )}
-                    </HStack>
-                    <Text fontSize="xs" color={subColor}>
-                      Auto-batched · fast bulk insert
-                    </Text>
-                    {skippedCount > 0 && (
-                      <Text fontSize="xs" color={subColor}>Skipped rows missing name or assignee.</Text>
+      {/* MODAL: Create / Edit */}
+      {(canCreate||canUpdate) && (
+        <Modal isOpen={isOpen} onClose={() => { onClose(); resetModal(); }} isCentered size="lg">
+          <ModalOverlay/><ModalContent bg={cardBg}>
+            <ModalHeader color={text}><Flex align="center" gap={2}><MdBugReport/>{editId ? "Edit Issue" : "New Issue"}</Flex></ModalHeader>
+            <ModalCloseButton/>
+            <ModalBody>
+              <VStack spacing={3} align="stretch">
+                {selectedProject && <Box p={3} bg={blueBg} borderRadius="lg" border={`1px solid ${blueBdr}`}><Text fontSize="xs" color={blueClr} fontWeight="600">📁 {selectedProject.name}</Text></Box>}
+                <FormControl isInvalid={!!errors.name}>
+                  <FormLabel fontSize="sm" color={text}>Issue Name *</FormLabel>
+                  <Input placeholder="e.g. Login button not responding" value={form.name}
+                    onChange={e => {
+                      if (e.target.value && !SAFE_NAME.test(e.target.value)) return;
+                      setForm(p => ({...p, name: e.target.value}));
+                      setErrors(p => ({...p, name: undefined}));
+                    }}/>
+                  <FormErrorMessage>{errors.name}</FormErrorMessage>
+                </FormControl>
+                <FormControl isInvalid={!!errors.description}>
+                  <FormLabel fontSize="sm" color={text} mb={1}>Description * <Text as="span" fontSize="xs" color={sub}>(@ to mention)</Text></FormLabel>
+                  <Box position="relative">
+                    <Textarea ref={taRef} value={form.description} onChange={handleDesc} rows={4} placeholder="Describe the issue…"/>
+                    {mOpen && fStaff.length > 0 && (
+                      <Box position="absolute" top="100%" left={0} zIndex={100} bg={ddBg} border={`1px solid ${ddBdr}`} borderRadius="md" boxShadow="lg" maxH="160px" overflowY="auto" w="220px" mt={1}>
+                        {fStaff.map(s => (
+                          <Flex key={s._id} px={3} py={2} align="center" gap={2} cursor="pointer" _hover={{bg:ddHov}} onMouseDown={ev => { ev.preventDefault(); insertMention(s); }}>
+                            <Box w="24px" h="24px" borderRadius="full" bg="red.400" color="white" display="flex" alignItems="center" justifyContent="center" fontSize="10px" fontWeight="bold">{s.name[0].toUpperCase()}</Box>
+                            <Text fontSize="sm" color={text}>{s.name}</Text>
+                          </Flex>
+                        ))}
+                      </Box>
                     )}
-                  </VStack>
-                  <Button colorScheme="blue" size="sm" leftIcon={<MdUploadFile size={14} />}
-                    onClick={handleUpload}>
-                    Upload
-                  </Button>
-                </Flex>
-              </Box>
-            )}
+                  </Box>
+                  {mentions.length > 0 && <Flex gap={2} mt={2} wrap="wrap">{mentions.map(m => <Badge key={m} colorScheme="red" borderRadius="full" px={2} fontSize="xs">@{m}</Badge>)}</Flex>}
+                  <FormErrorMessage>{errors.description}</FormErrorMessage>
+                </FormControl>
+                <FormControl isInvalid={!!errors.assignee}>
+                  <FormLabel fontSize="sm" color={text}>Assignee *</FormLabel>
+                  <Select placeholder="Select assignee" value={form.assignee}
+                    onChange={e => { setForm(p => ({...p, assignee: e.target.value})); setErrors(p => ({...p, assignee: undefined})); }}>
+                    {staff.map(s => <option key={s._id} value={s._id}>{s.name}</option>)}
+                  </Select>
+                  <FormErrorMessage>{errors.assignee}</FormErrorMessage>
+                </FormControl>
+                <FormControl>
+                  <FormLabel fontSize="sm" color={text}>Status</FormLabel>
+                  <Select placeholder="Select status" value={form.taskStatus} onChange={e => setForm(p => ({...p, taskStatus: e.target.value}))}>
+                    {statuses.map(s => <option key={s._id} value={s._id}>{s.name}</option>)}
+                  </Select>
+                </FormControl>
+                <Grid templateColumns="repeat(2,1fr)" gap={3}>
+                  <FormControl>
+                    <FormLabel fontSize="sm" color={text}>Priority</FormLabel>
+                    <Select value={form.priority} onChange={e => setForm(p => ({...p, priority: e.target.value}))}>
+                      {pOpts.map(o => <option key={o} value={o}>{o[0].toUpperCase()+o.slice(1)}</option>)}
+                    </Select>
+                  </FormControl>
+                  <FormControl>
+                    <FormLabel fontSize="sm" color={text}>Severity</FormLabel>
+                    <Select value={form.severity} onChange={e => setForm(p => ({...p, severity: e.target.value}))}>
+                      {sOpts.map(o => <option key={o} value={o}>{o[0].toUpperCase()+o.slice(1)}</option>)}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid templateColumns="repeat(2,1fr)" gap={3}>
+                  <FormControl>
+                    <FormLabel fontSize="xs" color={sub} mb={1}>Created Date</FormLabel>
+                    <Input type="date" value={form.createdDate} isReadOnly bg={roBg} cursor="not-allowed" opacity={0.7}/>
+                  </FormControl>
+                  <FormControl isInvalid={!!errors.dueDate}>
+                    <FormLabel fontSize="xs" color={sub} mb={1}>Due Date *</FormLabel>
+                    <Input type="date" value={form.dueDate} min={form.createdDate}
+                      onChange={e => { setForm(p => ({...p, dueDate: e.target.value})); setErrors(p => ({...p, dueDate: undefined})); }}/>
+                    <FormErrorMessage>{errors.dueDate}</FormErrorMessage>
+                  </FormControl>
+                </Grid>
+              </VStack>
+            </ModalBody>
+            <ModalFooter>
+              <Button variant="ghost" mr={3} onClick={() => { onClose(); resetModal(); }}>Cancel</Button>
+              <Button colorScheme="red" isLoading={saving} onClick={handleSave}>{editId ? "Update" : "Create"}</Button>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
+      )}
 
-            {/* ── Progress bar ─────────────────────────────────────────── */}
-            {uploading && (
-              <Box p={5} borderRadius="xl" border={`1px solid ${borderColor}`} bg={uploadBoxBg}>
-                <Flex justify="space-between" align="center" mb={3}>
-                  <VStack align="flex-start" spacing={0}>
-                    <Text fontSize="sm" fontWeight="700" color={textColor}>
-                      Uploading {rowCount.toLocaleString()} tasks…
-                    </Text>
-                    <Text fontSize="xs" color={subColor}>Uploading in fast batches…</Text>
-                  </VStack>
-                  <Text fontSize="xl" fontWeight="800" color="blue.500">
-                    {Math.round(progress)}%
-                  </Text>
-                </Flex>
-                <Progress
-                  value={progress}
-                  size="md"
-                  colorScheme="blue"
-                  borderRadius="full"
-                  hasStripe
-                  isAnimated
-                  sx={{ "& > div": { transition: "width 0.05s linear" } }}
-                />
-                <Text fontSize="xs" color={subColor} mt={2} textAlign="center">
-                  ⚡ Auto-batched to avoid payload limits
+      {/* MODAL: Delete confirm */}
+      <Modal isOpen={isDel} onClose={onDelClose} isCentered size="sm">
+        <ModalOverlay/><ModalContent bg={cardBg} borderRadius="xl">
+          <ModalHeader fontSize="md" color={text}>Delete Issue</ModalHeader>
+          <ModalBody fontSize="sm" color={sub}>Are you sure? This cannot be undone.</ModalBody>
+          <ModalFooter gap={2}>
+            <Button size="sm" variant="ghost" onClick={onDelClose}>Cancel</Button>
+            <Button size="sm" colorScheme="red" isLoading={deleting} loadingText="Deleting…" onClick={handleDelete}>Delete</Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* MODAL: Bulk Upload */}
+      <Modal isOpen={isBulk} onClose={() => { if (!bulkUploading) { onBulkClose(); resetBulk(); } }}
+        isCentered size="md" closeOnOverlayClick={!bulkUploading}>
+        <ModalOverlay backdropFilter="blur(2px)"/>
+        <ModalContent bg={cardBg} borderRadius="2xl" overflow="hidden">
+          <ModalHeader p={0}>
+            <Flex align="center" gap={3} px={6} py={4} borderBottom={`1px solid ${border}`}>
+              <Box bg="green.100" p={2} borderRadius="xl" _dark={{bg:"green.900"}}>
+                <MdUploadFile size={20} color="#38a169"/>
+              </Box>
+              <Box>
+                <Text fontSize="md" fontWeight="700" color={text}>Bulk Upload Issues</Text>
+                <Text fontSize="xs" color={sub}>
+                  Chunked JSON · {CHUNK_SIZE.toLocaleString()} rows/request · no 413 errors
                 </Text>
               </Box>
-            )}
+            </Flex>
+          </ModalHeader>
+          {!bulkUploading && <ModalCloseButton top={4} right={4}/>}
 
-            {/* Done */}
-            {done && (
-              <>
-                <Alert status={totalFailed > 0 && totalCreated === 0 ? "error" : totalFailed > 0 ? "warning" : "success"}
-                  borderRadius="xl">
-                  <AlertIcon as={totalFailed === 0 ? MdCheckCircle : undefined} />
-                  <Box>
-                    <Text fontSize="sm" fontWeight="700">
-                      {totalFailed > 0
-                        ? `${totalCreated.toLocaleString()} created, ${totalFailed.toLocaleString()} failed (duplicates or unmatched assignees)`
-                        : `✅ ${totalCreated.toLocaleString()} task${totalCreated !== 1 ? "s" : ""} created successfully!`}
-                    </Text>
-                    {totalFailed === 0 && (
-                      <Text fontSize="xs" color={subColor} mt={1}>Redirecting to tasks…</Text>
-                    )}
+          <ModalBody px={6} py={5}>
+            <VStack spacing={4} align="stretch">
+
+              {selectedProject
+                ? <Box px={3} py={2} bg={blueBg} borderRadius="lg" border={`1px solid ${blueBdr}`}>
+                    <Text fontSize="xs" color={blueClr} fontWeight="600">📁 {selectedProject.name}</Text>
+                    <Text fontSize="xs" color={blueClr} opacity={0.8}>Issues will be linked to this project</Text>
                   </Box>
+                : <Alert status="warning" borderRadius="lg" py={2}>
+                    <AlertIcon/>
+                    <AlertDescription fontSize="xs">No project selected — issues won't appear under a project filter.</AlertDescription>
+                  </Alert>
+              }
+
+              {/* Drop zone */}
+              {!bulkUploading && !bulkDone && (
+                <Box onClick={() => fileInputRef.current?.click()} cursor="pointer" p={8}
+                  borderRadius="xl" border="2px dashed"
+                  borderColor={bulkFile ? "green.400" : "gray.300"}
+                  bg={bulkFile ? grnBg : upBg}
+                  textAlign="center" transition="all 0.2s"
+                  _hover={{borderColor:"green.400", bg:grnBg}}>
+                  <MdCloudUpload size={40} color={bulkFile ? "#38a169" : "#a0aec0"} style={{margin:"0 auto 8px"}}/>
+                  <Text fontWeight="600" fontSize="sm" color={bulkFile ? "green.600" : text} mb={1}>
+                    {bulkFile ? `📄 ${bulkFile.name}` : "Click to choose .xlsx or .xls file"}
+                  </Text>
+                  <Text fontSize="xs" color={sub}>
+                    Required: <b>name</b>, <b>assignee</b> · Optional: description, status, priority, severity, due date
+                  </Text>
+                  <Input ref={fileInputRef} type="file" accept=".xlsx,.xls" display="none" onChange={handleFilePick}/>
+                </Box>
+              )}
+
+              {bulkError && (
+                <Alert status="error" borderRadius="lg">
+                  <AlertIcon/><AlertDescription fontSize="sm">{bulkError}</AlertDescription>
                 </Alert>
+              )}
 
-                {done && totalFailed === 0 && (
-                  setTimeout(() => navigate("/admin/tasks"), 1800) && null
-                )}
+              {bulkReady && !bulkUploading && !bulkDone && (
+                <Box p={4} borderRadius="xl" border="1px solid" borderColor="green.200" bg={grnBg}>
+                  <HStack spacing={2} mb={1}>
+                    <Badge colorScheme="green" borderRadius="full" px={3} py={1} fontSize="xs">✅ {bulkRows.toLocaleString()} rows</Badge>
+                    {bulkSkipped > 0 && <Badge colorScheme="orange" borderRadius="full" px={3} py={1} fontSize="xs">⚠ {bulkSkipped} skipped</Badge>}
+                  </HStack>
+                  <Text fontSize="xs" color="green.700" _dark={{color:"green.300"}}>
+                    {Math.ceil(bulkRows / CHUNK_SIZE)} chunk{Math.ceil(bulkRows / CHUNK_SIZE) > 1 ? "s" : ""} × {CHUNK_SIZE.toLocaleString()} rows — no size limit issues
+                  </Text>
+                </Box>
+              )}
 
-                <Flex justify="flex-end" gap={2}>
-                  <Button size="sm" variant="outline" onClick={reset}>Upload Another</Button>
-                  <Button size="sm" colorScheme="blue" onClick={() => navigate("/admin/tasks")}>
-                    Go to Tasks
-                  </Button>
-                </Flex>
+              {bulkUploading && (
+                <Box p={5} borderRadius="xl" border="1px solid" borderColor="green.200" bg={grnBg}>
+                  <Flex justify="space-between" align="center" mb={1}>
+                    <VStack align="flex-start" spacing={0}>
+                      <Text fontSize="sm" fontWeight="700" color="green.700" _dark={{color:"green.200"}}>
+                        Uploading {bulkRows.toLocaleString()} issues…
+                      </Text>
+                      <Text fontSize="xs" color="green.600">
+                        Chunk {Math.min(Math.round(bulkProgress / (100 / Math.ceil(bulkRows / CHUNK_SIZE))), Math.ceil(bulkRows / CHUNK_SIZE))} of {Math.ceil(bulkRows / CHUNK_SIZE)}
+                      </Text>
+                    </VStack>
+                    <Text fontSize="2xl" fontWeight="800" color="green.600">{bulkProgress}%</Text>
+                  </Flex>
+                  <Progress value={bulkProgress} size="lg" colorScheme="green" borderRadius="full" hasStripe isAnimated
+                    sx={{"& > div":{transition:"width 0.1s linear"}}}/>
+                  <Text fontSize="xs" color="green.500" mt={2} textAlign="center">Do not close this window</Text>
+                </Box>
+              )}
+
+              {bulkDone && bulkResult && (
+                <Box p={4} borderRadius="xl" border="1px solid"
+                  borderColor={bulkResult.error ? "red.200" : bulkResult.created > 0 ? "green.200" : "orange.200"}
+                  bg={useColorModeValue(
+                    bulkResult.error ? "red.50" : bulkResult.created > 0 ? "green.50" : "orange.50",
+                    bulkResult.error ? "red.900" : bulkResult.created > 0 ? "green.900" : "orange.900"
+                  )}>
+                  <Text fontSize="sm" fontWeight="700" mb={2}
+                    color={bulkResult.error ? "red.600" : bulkResult.created > 0 ? "green.700" : "orange.600"}>
+                    {bulkResult.error
+                      ? `❌ ${bulkResult.error}`
+                      : bulkResult.created > 0
+                        ? `✅ ${bulkResult.created.toLocaleString()} issue${bulkResult.created!==1?"s":""} uploaded!`
+                        : bulkResult.unmatched?.length > 0
+                          ? "❌ Assignee names not found in Staff"
+                          : "⚠️ 0 inserted — check assignee names match Staff exactly"}
+                  </Text>
+                  {!bulkResult.error && (
+                    <HStack spacing={2} wrap="wrap" mb={bulkResult.unmatched?.length > 0 ? 3 : 0}>
+                      {bulkResult.created > 0    && <Badge colorScheme="green"  borderRadius="full" px={2} py={1} fontSize="xs">✅ {bulkResult.created.toLocaleString()} created</Badge>}
+                      {bulkResult.duplicates > 0 && <Badge colorScheme="orange" borderRadius="full" px={2} py={1} fontSize="xs">⚠ {bulkResult.duplicates.toLocaleString()} duplicates</Badge>}
+                      {bulkResult.failed > 0     && <Badge colorScheme="red"    borderRadius="full" px={2} py={1} fontSize="xs">❌ {bulkResult.failed.toLocaleString()} failed</Badge>}
+                    </HStack>
+                  )}
+                  {bulkResult.unmatched?.length > 0 && (
+                    <Box p={3} bg="red.100" borderRadius="lg" _dark={{bg:"red.800"}}>
+                      <Text fontSize="xs" fontWeight="700" color="red.700" mb={1}>Not found in Staff:</Text>
+                      {bulkResult.unmatched.map(n => <Text key={n} fontSize="xs" color="red.600" fontFamily="mono">• "{n}"</Text>)}
+                      <Text fontSize="xs" color="red.500" mt={2} fontWeight="600">Add these names to Staff → re-upload</Text>
+                    </Box>
+                  )}
+                  {bulkResult.created > 0 && (
+                    <Text fontSize="xs" color="green.600" mt={1}>
+                      ✓ Showing first {limit} issues — use pagination to browse all
+                    </Text>
+                  )}
+                </Box>
+              )}
+
+            </VStack>
+          </ModalBody>
+
+          <ModalFooter px={6} py={4} borderTop={`1px solid ${border}`} gap={2}>
+            <Button size="sm" leftIcon={<MdDownload size={14}/>} variant="outline"
+              onClick={downloadSample} isDisabled={bulkUploading}>Sample</Button>
+            <Box flex={1}/>
+            {!bulkUploading && !bulkDone && (
+              <Button size="sm" variant="ghost" onClick={() => { onBulkClose(); resetBulk(); }}>Cancel</Button>
+            )}
+            {bulkDone && (
+              <>
+                <Button size="sm" variant="outline" onClick={resetBulk}>Upload Another</Button>
+                <Button size="sm" colorScheme="green" onClick={() => { onBulkClose(); resetBulk(); }}>Done</Button>
               </>
             )}
+            {bulkReady && !bulkUploading && !bulkDone && (
+              <Button colorScheme="green" size="sm" leftIcon={<MdUploadFile size={14}/>} onClick={handleBulkUpload}>
+                Upload {bulkRows.toLocaleString()} Issues
+              </Button>
+            )}
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
 
-          </VStack>
-        </Box>
-      </Box>
     </Box>
   );
 }
