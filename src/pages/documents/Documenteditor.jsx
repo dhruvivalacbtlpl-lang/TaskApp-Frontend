@@ -13,8 +13,8 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import ReactQuill from "react-quill";
-import "react-quill/dist/quill.snow.css";
+import { CKEditor } from "@ckeditor/ckeditor5-react";
+import ClassicEditor from "@ckeditor/ckeditor5-build-classic";
 import {
   Box, Flex, HStack, VStack, Input, Select, Text, Badge,
   Button, Switch, FormControl, FormLabel, Tooltip, Spinner,
@@ -23,7 +23,7 @@ import {
 } from "@chakra-ui/react";
 import {
   MdSave, MdClose, MdCheckCircle, MdSchedule, MdArrowBack,
-  MdDescription, MdAutoMode, MdPerson, MdFolder,
+  MdDescription, MdAutoMode, MdPerson, MdFolder
 } from "react-icons/md";
 import api from "../../api";
 import { useAuth } from "../../context/AuthContext";
@@ -71,9 +71,10 @@ export default function DocumentEditor() {
   const [timeAgo,      setTimeAgo]      = useState("");
 
   // Snapshot for revert
-  const savedSnapshot = useRef({ title:"", description:"", status:"draft", assignee:"", content:"" });
-  const autoSaveTimer = useRef(null);
-  const autoSaveRef   = useRef(autoSave);
+  const savedSnapshot    = useRef({ title:"", description:"", status:"draft", assignee:"", content:"" });
+  const autoSaveTimer    = useRef(null);
+  const autoSaveRef      = useRef(autoSave);
+  const saveControllerRef = useRef(null); // ← AbortController for cancelling in-flight saves
   useEffect(() => { autoSaveRef.current = autoSave; }, [autoSave]);
 
   // ── Colors ─────────────────────────────────────────────────────────────────
@@ -142,8 +143,12 @@ export default function DocumentEditor() {
     return () => clearInterval(interval);
   }, [lastSavedAt]);
 
-  // ── Cleanup timer on unmount ───────────────────────────────────────────────
-  useEffect(() => () => clearTimeout(autoSaveTimer.current), []);
+  // ── Cleanup on unmount ────────────────────────────────────────────────────
+  useEffect(() => () => {
+    clearTimeout(autoSaveTimer.current);         // cancel pending debounce
+    saveControllerRef.current?.abort();          // cancel any in-flight save request
+  }, []);
+
 
   // ── Save ───────────────────────────────────────────────────────────────────
   const save = useCallback(async ({ silent = false } = {}) => {
@@ -151,6 +156,18 @@ export default function DocumentEditor() {
       if (!silent) toast({ title:"Title is required", status:"warning", duration:2000 });
       return;
     }
+
+    // ── Abort Controller ───────────────────────────────────────────────────
+    // If a previous save request is still in flight, cancel it immediately.
+    // This prevents race conditions where an older slow request finishes
+    // after a newer one and overwrites the correct data in the database.
+    if (saveControllerRef.current) {
+      saveControllerRef.current.abort();
+    }
+    saveControllerRef.current = new AbortController();
+    const signal = saveControllerRef.current.signal;
+    // ──────────────────────────────────────────────────────────────────────
+
     setSaving(true);
     setSaveError("");
 
@@ -168,10 +185,12 @@ export default function DocumentEditor() {
       if (currentDocId) {
         res = await api.put(`/documents/${currentDocId}`, fd, {
           headers: { "Content-Type": "multipart/form-data" },
+          signal, // ← attach abort signal to axios request
         });
       } else {
         res = await api.post("/documents", fd, {
           headers: { "Content-Type": "multipart/form-data" },
+          signal, // ← attach abort signal to axios request
         });
         setCurrentDocId(res.data._id);
       }
@@ -184,6 +203,10 @@ export default function DocumentEditor() {
         toast({ title:"Saved!", status:"success", duration:1500, position:"top-right" });
       }
     } catch (err) {
+      // If the error is from our own abort — it means a newer save took over.
+      // This is expected behaviour, not a real error — so we silently ignore it.
+      if (err.name === "CanceledError" || err.code === "ERR_CANCELED") return;
+
       const msg = err.response?.data?.error || "Save failed";
       setSaveError(msg);
       if (!silent) toast({ title:msg, status:"error", duration:3000 });
@@ -408,61 +431,62 @@ export default function DocumentEditor() {
         )}
       </Box>
 
-      {/* ── REACT QUILL EDITOR ────────────────────────────────────────────── */}
+      {/* ── CKEDITOR ──────────────────────────────────────────────────────── */}
       <Box bg={cardBg} borderRadius="xl" boxShadow="sm"
         border={`1px solid ${borderClr}`} overflow="hidden"
         sx={{
-          ".ql-toolbar": {
-            background:   toolbarBg,
-            border:       "none !important",
-            borderBottom: `1px solid ${borderClr} !important`,
-            padding:      "10px 16px",
+          ".ck-toolbar": {
+            background:        `${toolbarBg} !important`,
+            border:            "none !important",
+            borderBottom:      `1px solid ${borderClr} !important`,
+            borderBottomWidth: "1px !important",
+            borderBottomStyle: "solid !important",
+            borderBottomColor: `${borderClr} !important`,
           },
-          ".ql-container": {
-            border:     "none !important",
-            fontSize:   "15px",
-          },
-          ".ql-editor": {
+          ".ck-editor__editable": {
             minHeight:  "520px",
+            fontSize:   "15px",
             lineHeight: "1.85",
-            padding:    "32px 40px",
-            color:      textColor,
+            padding:    "32px 40px !important",
+            background: `${cardBg} !important`,
+            color:      `${textColor} !important`,
+            border:     "none !important",
+            boxShadow:  "none !important",
+            outline:    "none !important",
           },
-          ".ql-editor.ql-blank::before": {
-            color:      subColor,
-            fontStyle:  "normal",
-            left:       "40px",
+          ".ck.ck-editor":                      { border: "none !important" },
+          ".ck.ck-editor__editable.ck-focused": { boxShadow: "none !important", border: "none !important" },
+          ".ck-editor__editable h2":            { fontSize: "1.5em", fontWeight: "700", marginBottom: "0.5em" },
+          ".ck-editor__editable h3":            { fontSize: "1.25em", fontWeight: "600" },
+          ".ck-editor__editable blockquote":    { borderLeft: "4px solid #3182ce", paddingLeft: "16px", color: "#718096" },
+          ".ck-editor__editable table":         { borderCollapse: "collapse", width: "100%" },
+          ".ck-editor__editable table td, .ck-editor__editable table th": {
+            border: `1px solid ${borderClr}`, padding: "8px 12px",
           },
-          ".ql-snow .ql-stroke":       { stroke:  textColor },
-          ".ql-snow .ql-fill":         { fill:    textColor },
-          ".ql-snow .ql-picker":       { color:   textColor },
-          ".ql-snow .ql-picker-options": { background: cardBg },
         }}>
-        <ReactQuill
-          theme="snow"
-          value={content}
-          onChange={(val) => {
-            setContent(val);
+        <CKEditor
+          editor={ClassicEditor}
+          data={content}
+          onChange={(_, editor) => {
+            setContent(editor.getData());
             setIsDirty(true);
             scheduleAutoSave();
           }}
-          modules={{
-            toolbar: [
-              [{ header: [1, 2, 3, false] }],
-              ["bold", "italic", "underline", "strike"],
-              [{ list: "ordered" }, { list: "bullet" }],
-              [{ indent: "-1" }, { indent: "+1" }],
-              ["blockquote", "code-block"],
-              ["link"],
-              ["clean"],
-            ],
+          config={{
+            toolbar: {
+              items: [
+                "heading", "|",
+                "bold", "italic", "underline", "strikethrough", "|",
+                "bulletedList", "numberedList", "todoList", "|",
+                "outdent", "indent", "|",
+                "blockQuote", "insertTable", "horizontalLine", "|",
+                "link", "|",
+                "undo", "redo",
+              ],
+            },
+            table: { contentToolbar: ["tableColumn","tableRow","mergeTableCells"] },
+            placeholder: "Start writing your document here…",
           }}
-          formats={[
-            "header", "bold", "italic", "underline", "strike",
-            "list", "bullet", "indent",
-            "blockquote", "code-block", "link",
-          ]}
-          placeholder="Start writing your document here…"
         />
       </Box>
 

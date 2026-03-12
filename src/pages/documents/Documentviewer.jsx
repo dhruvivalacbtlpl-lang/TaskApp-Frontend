@@ -5,7 +5,7 @@
  * Route: /documents/view/:id
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   Box, Flex, Text, Badge, Avatar, Button, Spinner, VStack,
@@ -34,6 +34,7 @@ export default function DocumentViewer() {
   const [accessMessage,  setAccessMessage]  = useState("");
   const [accessSending,  setAccessSending]  = useState(false);
 
+
   const { isOpen: isAccessOpen, onOpen: onAccessOpen, onClose: onAccessClose } = useDisclosure();
 
   const isAdmin       = user?.role?.name?.toLowerCase() === "admin";
@@ -57,6 +58,7 @@ export default function DocumentViewer() {
       .catch(() => toast({ title:"Failed to load document", status:"error", duration:3000 }))
       .finally(() => setLoading(false));
   }, [id]); // eslint-disable-line
+
 
   const isCreator    = (d) => d.createdBy?._id === user?._id || d.createdBy === user?._id;
   const isAssigned   = (d) => d.assignee?._id  === user?._id || d.assignee  === user?._id;

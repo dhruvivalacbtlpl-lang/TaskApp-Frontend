@@ -14,6 +14,7 @@ import CreateRole from "./pages/CreateRole";
 import EditTask from "./pages/tasks/EditTask";
 import CreateTask from "./pages/tasks/CreateTask";
 import TaskList from "./pages/tasks/TaskList";
+import BulkUploadTasks from "./pages/tasks/Bulkuploadtask";
 import CreateTaskStatus from "./pages/taskstatus/CreateTaskStatus";
 import TaskStatusList from "./pages/taskstatus/TaskStatusList";
 import EditTaskStatus from "./pages/taskstatus/EditTaskStatus";
@@ -27,7 +28,7 @@ import TeamPage from "./pages/Team/TeamPage";
 import IssuesPage from "./pages/tasks/IssuesPage";
 import DocumentsPage from "./pages/documents/Documentspage";
 import DocumentEditor from "./pages/documents/Documenteditor";
-import DocumentViewer from "./pages/documents/Documentviewer";
+import DocumentViewer from "./pages/documents/DocumentViewer";
 import GoPage from "./pages/GoPage";
 
 function App() {
@@ -65,6 +66,7 @@ function App() {
             <Route index element={<TaskList />} />
             <Route path="create" element={<CreateTask />} />
             <Route path="edit/:id" element={<EditTask />} />
+            <Route path="bulk-upload" element={<BulkUploadTasks />} />
           </Route>
 
           <Route path="task-status">
@@ -98,4 +100,4 @@ function App() {
   );
 }
 
-export default App;
+export default App; 

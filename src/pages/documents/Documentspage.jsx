@@ -654,24 +654,42 @@ export default function DocumentsPage() {
                       {/* File / View */}
                       <Td>
                         {isTxt ? (
-                          /* Text doc — View button navigates to viewer */
+                          /* Text doc — View navigates to viewer page */
                           <Button size="xs" colorScheme="purple" variant="outline"
                             leftIcon={<MdVisibility size={12}/>}
                             onClick={() => navigate(`/admin/documents/view/${doc._id}`)}>
                             View
                           </Button>
-                        ) : doc.file?.url ? (
-                          /* File doc — download link */
-                          <Tooltip label={`${doc.file.originalName} (${fmtSize(doc.file.size)})`}>
-                            <Button as="a"
-                              href={`${import.meta.env.VITE_API_URL || "https://w2ml73xv-5000.inc1.devtunnels.ms"}${doc.file.url}`}
-                              target="_blank" rel="noopener noreferrer"
-                              size="xs" colorScheme="green" variant="outline"
-                              leftIcon={<TypeIcon size={12}/>}>
-                              <MdDownload size={12}/>
-                            </Button>
-                          </Tooltip>
-                        ) : (
+                        ) : doc.file?.url ? (() => {
+                          const BASE = (import.meta.env.VITE_API_URL || "https://w2ml73xv-5000.inc1.devtunnels.ms").replace(/\/api$/, "");
+                          const fileUrl = `${BASE}${doc.file.url}`;
+                          const m = doc.file.mimetype || "";
+                          const isOffice = m.includes("word") || m.includes("excel") ||
+                            m.includes("sheet") || m.includes("presentation") || m.includes("powerpoint");
+                          const isPdf   = m.includes("pdf");
+                          const isImg   = m.includes("image");
+
+                          return (
+                            <HStack spacing={1}>
+                              {/* View — opens in browser (works for PDF + images) */}
+                              <Tooltip label={isOffice ? "Opens in browser (may download)" : "View in browser"}>
+                                <Button as="a" href={fileUrl} target="_blank"
+                                  rel="noopener noreferrer"
+                                  size="xs" colorScheme="blue" variant="outline"
+                                  leftIcon={<MdVisibility size={11}/>}>
+                                  View
+                                </Button>
+                              </Tooltip>
+                              {/* Download — always triggers OS "open with" dialog */}
+                              <Tooltip label={`Download — opens with your default app`}>
+                                <IconButton as="a" href={fileUrl} download={doc.file.originalName}
+                                  size="xs" colorScheme="green" variant="ghost"
+                                  aria-label="Download"
+                                  icon={<MdDownload size={13}/>}/>
+                              </Tooltip>
+                            </HStack>
+                          );
+                        })() : (
                           <Text fontSize="xs" color={subColor}>—</Text>
                         )}
                       </Td>

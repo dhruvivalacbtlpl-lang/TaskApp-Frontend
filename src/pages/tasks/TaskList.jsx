@@ -216,7 +216,7 @@ export default function TaskList() {
             <Button
               leftIcon={<MdUploadFile size={18} />}
               colorScheme="gray" variant="outline"
-              onClick={() => navigate("/admin/tasks/bulk-upload")}
+              onClick={() => navigate("/admin/tasks/")}
             >
               Bulk Upload
             </Button>
