@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useAuth } from "./context/AuthContext";
 
 import Login from "./pages/Login";
+import Signup from "./pages/Signup";
 import AdminProfile from "./pages/AdminProfile";
 import StaffPage from "./pages/StaffPage";
 import CreateStaffPage from "./pages/CreateStaffPage";
@@ -31,20 +33,86 @@ import DocumentEditor from "./pages/documents/Documenteditor";
 import DocumentViewer from "./pages/documents/DocumentViewer";
 import GoPage from "./pages/GoPage";
 
+/* ─── Protected Route ────────────────────────────────────────────────────────
+ * Redirects to /login if not logged in.
+ * Shows loading spinner while auth is being checked.
+ */
+function ProtectedRoute({ children }) {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div style={{
+        minHeight: "100vh", display: "flex",
+        alignItems: "center", justifyContent: "center",
+        fontSize: "14px", color: "#94a3b8",
+      }}>
+        Loading...
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return children;
+}
+
+/* ─── Public Route ───────────────────────────────────────────────────────────
+ * If already logged in, redirect away from login/signup pages.
+ */
+function PublicRoute({ children }) {
+  const { user, loading } = useAuth();
+
+  if (loading) return null;
+
+  if (user) {
+    return <Navigate to="/admin" replace />;
+  }
+
+  return children;
+}
+
 function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-
-  useEffect(() => {
-    setIsLoggedIn(localStorage.getItem("isLoggedIn") === "true");
-  }, []);
-
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Login />} />
-        <Route path="/login" element={<Login />} />
+        {/* ── Public routes ── */}
+        <Route
+          path="/"
+          element={
+            <PublicRoute>
+              <Login />
+            </PublicRoute>
+          }
+        />
+        <Route
+          path="/login"
+          element={
+            <PublicRoute>
+              <Login />
+            </PublicRoute>
+          }
+        />
+        <Route
+          path="/signup"
+          element={
+            <PublicRoute>
+              <Signup />
+            </PublicRoute>
+          }
+        />
 
-        <Route path="/admin" element={<AdminLayout />}>
+        {/* ── Protected admin routes ── */}
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute>
+              <AdminLayout />
+            </ProtectedRoute>
+          }
+        >
           <Route index element={<Dashboard />} />
           <Route path="profile" element={<AdminProfile />} />
 
@@ -100,4 +168,4 @@ function App() {
   );
 }
 
-export default App; 
+export default App;
