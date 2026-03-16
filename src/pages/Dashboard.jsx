@@ -1,262 +1,250 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useMemo } from "react";
 import {
   Box, Flex, Heading, Text, Spinner, SimpleGrid,
-  Badge, Avatar, VStack, HStack, Alert, AlertIcon,
-  AlertDescription, CircularProgress, CircularProgressLabel,
-  useColorModeValue, Button, IconButton, Tooltip, Progress,
+  Badge, Avatar, VStack, HStack, useColorModeValue, 
+  Button, Icon, Progress, Divider, AvatarGroup, 
+  Square, Grid, GridItem
 } from "@chakra-ui/react";
 import { useAuth } from "../context/AuthContext";
 import api from "../api";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
-  ResponsiveContainer, BarChart, Bar, Legend, PieChart, Pie, Cell,
+  ResponsiveContainer, BarChart, Bar, Cell,
 } from "recharts";
-import { MdClose, MdFolder, MdOpenInNew, MdArrowForward } from "react-icons/md";
+import { 
+  MdOutlineRocketLaunch, MdOutlinePeople, MdOutlineDataUsage,
+  MdOutlineCheckCircle, MdOutlineTimer, MdOutlineLayers
+} from "react-icons/md";
 import { useNavigate } from "react-router-dom";
 
-/* ── Helpers ─────────────────────────────────────────────────────────────── */
-const isPending    = (n = "") => n?.toLowerCase().includes("pending");
-const isCompleted  = (n = "") => n?.toLowerCase().includes("complet");
-const isInProgress = (n = "") =>
-  n?.toLowerCase().includes("progress") ||
-  n?.toLowerCase().replace(/[\s_]+/g, "") === "inprogress";
-
-const getStatusColor = (n = "") => {
-  if (isCompleted(n))  return "green";
-  if (isInProgress(n)) return "brand";
-  if (isPending(n))    return "yellow";
-  return "gray";
+const STATUS_COLORS = {
+  completed: "#10b981",
+  inprogress: "#3b82f6",
+  pending: "#f59e0b",
+  default: "#94a3b8"
 };
 
-const PROJECT_COLORS = [
-  "#6366f1","#10b981","#f59e0b","#ec4899","#3b82f6",
-  "#8b5cf6","#06b6d4","#f97316","#84cc16","#14b8a6",
-];
-
 export default function Dashboard() {
-  const { user, selectedProject, selectProject } = useAuth();
+  const { user, selectedProject } = useAuth();
   const navigate = useNavigate();
+  const [data, setData] = useState({ tasks: [], staff: [], docs: [] });
+  const [loading, setLoading] = useState(true);
 
-  const [allTasks,         setAllTasks]        = useState([]);
-  const [allProjects,      setAllProjects]     = useState([]);
-  const [stats,            setStats]           = useState({ staff:0, tasks:0, pending:0, completed:0, inProgress:0, projects:0, documents:0 });
-  const [recentTasks,      setRecentTasks]     = useState([]);
-  const [staffTaskData,    setStaffTaskData]   = useState([]);
-  const [monthlyData,      setMonthlyData]     = useState([]);
-  const [projectTaskData, setProjectTaskData] = useState([]);
-  const [projectPieData,  setProjectPieData]  = useState([]);
-  const [loading,          setLoading]         = useState(true);
-  const [errorMsg,         setErrorMsg]        = useState("");
-  const [activeProject,    setActiveProject]   = useState(null);
+  // Theme Colors
+  const bg = useColorModeValue("gray.50", "gray.900");
+  const cardBg = useColorModeValue("white", "gray.800");
+  const border = useColorModeValue("gray.100", "gray.700");
+  const subText = useColorModeValue("gray.500", "gray.400");
 
-  // Use Optional Chaining for safe display
-  const displayName = user?.name || "User";
-  const displayRole = user?.role?.name || "";
-
-  const cardBg        = useColorModeValue("white",      "gray.800");
-  const textColor     = useColorModeValue("gray.800",   "white");
-  const subColor      = useColorModeValue("gray.500",   "gray.400");
-  const mutedColor    = useColorModeValue("gray.400",   "gray.500");
-  const borderColor   = useColorModeValue("#e5e7eb",    "#4a5568");
-  const rowHover      = useColorModeValue("brand.50",   "gray.700");
-  const rowHoverBdr   = useColorModeValue("brand.200", "brand.600");
-  const progressBg    = useColorModeValue("gray.200",   "gray.600");
-  const progressInner = useColorModeValue("gray.50",    "gray.700");
-  const chartGrid     = useColorModeValue("#f0f0f0",    "#4a5568");
-  const chartText     = useColorModeValue("#374151",    "#e2e8f0");
-  const filterBg      = useColorModeValue("brand.50",   "brand.900");
-  const filterBdr     = useColorModeValue("brand.300", "brand.500");
-  const isLight       = useColorModeValue(true, false);
-
-  /* ── Compute helpers ───────────────────────────────────────────────────── */
-  const computeStats = useCallback((tasks = [], staffCount, projectCount, docCount) => {
-    setStats(prev => ({
-      staff:      staffCount   ?? prev.staff,
-      projects:   projectCount ?? prev.projects,
-      documents:  docCount     ?? prev.documents,
-      tasks:      tasks?.length || 0,
-      pending:    tasks?.filter(t => isPending(t.taskStatus?.name)).length || 0,
-      completed:  tasks?.filter(t => isCompleted(t.taskStatus?.name)).length || 0,
-      inProgress: tasks?.filter(t => isInProgress(t.taskStatus?.name)).length || 0,
-    }));
-  }, []);
-
-  const computeStaffChart = useCallback((tasks = []) => {
-    const map = {};
-    tasks.forEach(t => {
-      const n = t.assignee?.name; if (!n) return;
-      if (!map[n]) map[n] = { pending:0, completed:0, inProgress:0 };
-      const s = t.taskStatus?.name || "";
-      if      (isPending(s))    map[n].pending++;
-      else if (isCompleted(s))  map[n].completed++;
-      else if (isInProgress(s)) map[n].inProgress++;
-    });
-    setStaffTaskData(Object.entries(map).map(([name, c]) => ({ name, ...c })));
-  }, []);
-
-  const computeMonthlyChart = useCallback((tasks = []) => {
-    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-    const map = {};
-    tasks.forEach(t => {
-      const m = new Date(t.createdAt).getMonth();
-      if (!map[m]) map[m] = { month:months[m], total:0, completed:0 };
-      map[m].total++;
-      if (isCompleted(t.taskStatus?.name || "")) map[m].completed++;
-    });
-    setMonthlyData(Object.keys(map).sort((a,b) => +a - +b).map(k => map[k]));
-  }, []);
-
-  const computeProjectCharts = useCallback((tasks = []) => {
-    const map = {};
-    tasks.forEach(t => {
-      const n = t.project?.name || "No Project";
-      if (!map[n]) map[n] = { name:n, total:0, completed:0, inProgress:0, pending:0 };
-      map[n].total++;
-      const s = t.taskStatus?.name || "";
-      if      (isCompleted(s))  map[n].completed++;
-      else if (isInProgress(s)) map[n].inProgress++;
-      else if (isPending(s))    map[n].pending++;
-    });
-    const vals = Object.values(map);
-    setProjectTaskData(vals);
-    setProjectPieData(vals.map((p, i) => ({
-      name: p.name, value: p.total, color: PROJECT_COLORS[i % PROJECT_COLORS.length],
-    })));
-  }, []);
-
-  /* ── Fetch all data once ───────────────────────────────────────────────── */
   useEffect(() => {
-    let isMounted = true;
-    const run = async () => {
+    const fetchData = async () => {
       try {
-        const [staffRes, tasksRes, projectsRes, docsRes] = await Promise.all([
+        const [s, t, d] = await Promise.all([
           api.get("/staff"),
           api.get("/tasks"),
-          api.get("/projects"),
-          api.get("/documents").catch(() => ({ data: [] })),
+          api.get("/documents").catch(() => ({ data: [] }))
         ]);
-
-        if (!isMounted) return;
-
-        const tasks    = (tasksRes?.data || []).filter(t => t.type !== "issue");
-        const staff    = staffRes?.data || [];
-        const projects = projectsRes?.data || [];
-        const docs     = Array.isArray(docsRes?.data) ? docsRes.data : [];
-
-        setAllTasks(tasks);
-        setAllProjects(projects);
-        computeStats(tasks, staff.length, projects.length, docs.length);
-        computeStaffChart(tasks);
-        computeMonthlyChart(tasks);
-        computeProjectCharts(tasks);
-        setRecentTasks(tasks.slice(0, 5));
-      } catch (err) {
-        if (isMounted) setErrorMsg("Failed to load dashboard data.");
+        setData({ staff: s.data, tasks: t.data, docs: d.data });
       } finally {
-        if (isMounted) setLoading(false);
+        setLoading(false);
       }
     };
-    run();
-    return () => { isMounted = false; };
-  }, [computeStats, computeStaffChart, computeMonthlyChart, computeProjectCharts]);
+    fetchData();
+  }, []);
 
-  /* ── Derived rates ─────────────────────────────────────────────────────── */
-  const completionRate = stats.tasks > 0 ? Math.round((stats.completed / stats.tasks) * 100) : 0;
-  const pendingRate    = stats.tasks > 0 ? Math.round((stats.pending    / stats.tasks) * 100) : 0;
-  const inProgressRate = stats.tasks > 0 ? Math.round((stats.inProgress / stats.tasks) * 100) : 0;
+  // ── Live Filtering Logic ────────────────────────────────────────────────
+  const activeTasks = useMemo(() => {
+    const projId = typeof selectedProject === 'string' ? selectedProject : selectedProject?._id;
+    return projId ? data.tasks.filter(t => (t.project?._id || t.project) === projId) : data.tasks;
+  }, [data.tasks, selectedProject]);
 
-  const cards = [
-    { label:"Total Staff",  value:stats.staff,      color:"#3b82f6", lightBg:"#eff6ff", darkBg:"#1e3a5f", hoverLight:"#dbeafe", hoverDark:"#1e40af22", emoji:"👥", sub:"Active members"   },
-    { label:"Total Tasks",  value:stats.tasks,      color:"#10b981", lightBg:"#ecfdf5", darkBg:"#1a3a2e", hoverLight:"#d1fae5", hoverDark:"#065f4622", emoji:"📋", sub: activeProject ? `In ${activeProject.name}` : "All tasks" },
-    { label:"Pending",      value:stats.pending,    color:"#f59e0b", lightBg:"#fffbeb", darkBg:"#3a2e1a", hoverLight:"#fef3c7", hoverDark:"#92400e22", emoji:"⏳", sub:"Awaiting action"  },
-    { label:"Completed",    value:stats.completed,  color:"#8b5cf6", lightBg:"#f5f3ff", darkBg:"#2e1a3a", hoverLight:"#ede9fe", hoverDark:"#5b21b622", emoji:"✅", sub:"Tasks done"        },
-    { label:"In Progress",  value:stats.inProgress, color:"#ec4899", lightBg:"#fdf2f8", darkBg:"#3a1a2e", hoverLight:"#fce7f3", hoverDark:"#9d174d22", emoji:"🔄", sub:"Being worked on"   },
-    { label:"Documents",    value:stats.documents,  color:"#06b6d4", lightBg:"#ecfeff", darkBg:"#1a3038", hoverLight:"#cffafe", hoverDark:"#0e749122", emoji:"📄", sub:"Total docs"       },
-  ];
+  const analytics = useMemo(() => {
+    const total = activeTasks.length;
+    const done = activeTasks.filter(t => t.taskStatus?.name?.toLowerCase().includes("complet")).length;
+    const prog = activeTasks.filter(t => t.taskStatus?.name?.toLowerCase().includes("progress")).length;
+    return {
+      total,
+      done,
+      prog,
+      rate: total ? Math.round((done / total) * 100) : 0,
+      velocity: prog + done > 0 ? "High" : "Stable"
+    };
+  }, [activeTasks]);
 
-  if (loading) return (
-    <Flex justify="center" align="center" h="60vh">
-      <Spinner size="xl" color="brand.500" thickness="3px"/>
-    </Flex>
-  );
+  if (loading) return <Flex h="80vh" align="center" justify="center"><Spinner size="xl" thickness="4px" color="purple.500"/></Flex>;
 
   return (
-    <Box>
-      {errorMsg && (
-        <Alert status="error" borderRadius="md" mb={4}>
-          <AlertIcon/><AlertDescription>{errorMsg}</AlertDescription>
-        </Alert>
-      )}
-
-      {/* ── Welcome Banner ─────────────────────────────────────────────── */}
-      <Flex p={6} borderRadius="xl" boxShadow="sm" mb={6} align="center" justify="space-between"
-        style={{ background:`linear-gradient(to right, #6d28d9, #7c3aed)` }}>
-        <Box>
-          <Heading size="md" color="white">👋 Welcome, {displayName}!</Heading>
-          <Text fontSize="sm" color="whiteAlpha.800" mt={1}>
-            {user?.company?.name ? `${user.company.name} Dashboard` : "Organization Overview"}
-          </Text>
-        </Box>
-        <Avatar name={displayName} size="lg" bg="white" color="brand.500"/>
+    <Box maxW="1400px" mx="auto" p={1}>
+      {/* ── HEADER BREADCRUMB ── */}
+      <Flex justify="space-between" align="center" mb={8}>
+        <VStack align="start" spacing={0}>
+          <HStack>
+            <Text fontSize="sm" color="purple.500" fontWeight="bold" textTransform="uppercase" letterSpacing="widest">
+              {selectedProject ? "Project Overview" : "Organization Pulse"}
+            </Text>
+            {selectedProject && <Badge colorScheme="purple">Live</Badge>}
+          </HStack>
+          <Heading size="xl" fontWeight="900">
+            {selectedProject ? selectedProject.name : `Welcome, ${user?.name.split(' ')[0]}`}
+          </Heading>
+        </VStack>
+        <HStack spacing={3}>
+           <AvatarGroup size="sm" max={4}>
+             {data.staff.map(s => <Avatar key={s._id} name={s.name} />)}
+           </AvatarGroup>
+           <Divider orientation="vertical" h="30px" />
+           <Button colorScheme="purple" size="sm" leftIcon={<MdOutlineRocketLaunch />}>New Task</Button>
+        </HStack>
       </Flex>
 
-      {/* ── Stats Cards ─────────────────────────────────────────────────── */}
-      <SimpleGrid columns={{ base:2, sm:3, lg:6 }} spacing={4} mb={6}>
-        {cards.map(card => (
-          <Box key={card.label} bg={isLight ? card.lightBg : card.darkBg} p={4} borderRadius="xl" borderTop={`3px solid ${card.color}`}>
-             <Text fontSize="2xl" mb={1}>{card.emoji}</Text>
-             <Text fontSize="2xl" fontWeight="bold" color={textColor}>{card.value}</Text>
-             <Text fontSize="xs" color={subColor} fontWeight="600">{card.label}</Text>
-          </Box>
-        ))}
+      {/* ── TOP METRICS (Modern Borderless Look) ── */}
+      <SimpleGrid columns={{ base: 1, md: 4 }} spacing={6} mb={10}>
+        <MetricCard icon={MdOutlineLayers} label="Active Tasks" value={analytics.total} color="blue.500" />
+        <MetricCard icon={MdOutlineCheckCircle} label="Completed" value={analytics.done} color="green.500" />
+        <MetricCard icon={MdOutlineTimer} label="In Progress" value={analytics.prog} color="orange.500" />
+        <MetricCard icon={MdOutlineDataUsage} label="Success Rate" value={`${analytics.rate}%`} color="purple.500" />
       </SimpleGrid>
 
-      {/* ── Project Breakdown Charts ── */}
-      <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={6} mb={6}>
-        <Box bg={cardBg} p={6} borderRadius="xl" boxShadow="sm">
-            <Heading size="sm" mb={4}>Project Distribution</Heading>
-            <ResponsiveContainer width="100%" height={250}>
-                <PieChart>
-                    <Pie data={projectPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
-                        {projectPieData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                    </Pie>
-                    <RTooltip />
-                </PieChart>
-            </ResponsiveContainer>
-        </Box>
-        
-        <Box bg={cardBg} p={6} borderRadius="xl" boxShadow="sm">
-          <Heading size="sm" mb={4}>Task Status Breakdown</Heading>
-          <VStack spacing={4} align="stretch">
-            <Box>
-                <Text fontSize="xs" mb={1}>Completion Rate: {completionRate}%</Text>
-                <Progress value={completionRate} colorScheme="green" size="sm" borderRadius="full" />
+      <Grid templateColumns={{ base: "1fr", lg: "repeat(3, 1fr)" }} gap={6}>
+        {/* ── VELOCITY CHART (Large) ── */}
+        <GridItem colSpan={{ base: 1, lg: 2 }}>
+          <Box bg={cardBg} p={6} borderRadius="2xl" border="1px solid" borderColor={border} boxShadow="sm">
+            <Flex justify="space-between" mb={6}>
+              <Text fontWeight="bold">Task Completion Trend</Text>
+              <SelectTransparent />
+            </Flex>
+            <Box h="320px">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={getMockTrendData()}>
+                  <defs>
+                    <linearGradient id="colorPv" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.1}/>
+                      <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={border} />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} fontSize={12} tick={{fill: '#94a3b8'}} />
+                  <YAxis hide />
+                  <RTooltip content={<CustomTooltip />} />
+                  <Area type="monotone" dataKey="completed" stroke="#8b5cf6" strokeWidth={3} fillOpacity={1} fill="url(#colorPv)" />
+                </AreaChart>
+              </ResponsiveContainer>
             </Box>
-            <Box>
-                <Text fontSize="xs" mb={1}>In Progress: {inProgressRate}%</Text>
-                <Progress value={inProgressRate} colorScheme="blue" size="sm" borderRadius="full" />
+          </Box>
+        </GridItem>
+
+        {/* ── PROJECT HEALTH (Circular) ── */}
+        <GridItem colSpan={1}>
+          <Box bg={cardBg} p={6} borderRadius="2xl" border="1px solid" borderColor={border} h="full">
+            <Text fontWeight="bold" mb={6}>Overall Progress</Text>
+            <Flex direction="column" align="center" justify="center" h="250px">
+              <Box position="relative" size="180px">
+                <Progress 
+                  type="circular" 
+                  value={analytics.rate} 
+                  size="180px" 
+                  thickness="8px" 
+                  color="purple.500"
+                  trackColor={border}
+                >
+                  <VStack spacing={0}>
+                    <Text fontSize="3xl" fontWeight="900">{analytics.rate}%</Text>
+                    <Text fontSize="xs" color={subText}>Completed</Text>
+                  </VStack>
+                </Progress>
+              </Box>
+            </Flex>
+            <VStack mt={6} align="stretch" spacing={3}>
+                <HealthRow label="Team Velocity" value={analytics.velocity} color="green" />
+                <HealthRow label="Total Staff" value={data.staff.length} color="blue" />
+                <HealthRow label="Documentation" value={data.docs.length} color="gray" />
+            </VStack>
+          </Box>
+        </GridItem>
+
+        {/* ── RECENT ACTIVITY TABLE ── */}
+        <GridItem colSpan={{ base: 1, lg: 3 }}>
+          <Box bg={cardBg} borderRadius="2xl" border="1px solid" borderColor={border} overflow="hidden">
+            <Box p={5} borderBottom="1px solid" borderColor={border}>
+              <Text fontWeight="bold">Recent Live Tasks</Text>
             </Box>
-          </VStack>
-        </Box>
-      </SimpleGrid>
-      
-      {/* ── Recent Tasks List ── */}
-      <Box bg={cardBg} p={6} borderRadius="xl" boxShadow="sm">
-        <Heading size="sm" mb={4}>🕐 Recent Tasks</Heading>
-        <VStack align="stretch" spacing={3}>
-            {recentTasks.length > 0 ? recentTasks.map(task => (
-                <HStack key={task._id} justify="space-between" p={3} border="1px solid" borderColor={borderColor} borderRadius="lg">
-                    <VStack align="start" spacing={0}>
-                        <Text fontWeight="bold" fontSize="sm">{task.name}</Text>
-                        <Text fontSize="xs" color={subColor}>{task.project?.name || "No Project"}</Text>
+            <Box overflowX="auto">
+              <VStack align="stretch" spacing={0} p={2}>
+                {activeTasks.slice(0, 5).map((task) => (
+                  <Flex key={task._id} align="center" p={4} borderRadius="xl" _hover={{ bg: bg }} transition="0.2s">
+                    <Square size="40px" bg="purple.50" borderRadius="lg" color="purple.600" mr={4}>
+                      <MdOutlineRocketLaunch />
+                    </Square>
+                    <VStack align="start" spacing={0} flex={1}>
+                      <Text fontWeight="bold" fontSize="sm">{task.name}</Text>
+                      <Text fontSize="xs" color={subText}>{task.project?.name || "No Project"}</Text>
                     </VStack>
-                    <Badge colorScheme={getStatusColor(task.taskStatus?.name)}>{task.taskStatus?.name}</Badge>
-                </HStack>
-            )) : <Text color={mutedColor}>No recent tasks</Text>}
-        </VStack>
-      </Box>
+                    <HStack spacing={8}>
+                      <Avatar size="xs" name={task.assignee?.name} />
+                      <Badge variant="subtle" colorScheme={task.taskStatus?.name?.toLowerCase().includes('complet') ? 'green' : 'blue'}>
+                        {task.taskStatus?.name}
+                      </Badge>
+                      <Text fontSize="xs" color={subText}>{new Date(task.createdAt).toLocaleDateString()}</Text>
+                    </HStack>
+                  </Flex>
+                ))}
+              </VStack>
+            </Box>
+          </Box>
+        </GridItem>
+      </Grid>
     </Box>
   );
 }
+
+// ── SUB-COMPONENTS ──
+
+function MetricCard({ icon, label, value, color }) {
+  const cardBg = useColorModeValue("white", "gray.800");
+  const border = useColorModeValue("gray.100", "gray.700");
+  return (
+    <HStack bg={cardBg} p={5} borderRadius="2xl" border="1px solid" borderColor={border} spacing={4} align="center">
+      <Square size="48px" bg={`${color.split('.')[0]}.50`} color={color} borderRadius="xl">
+        <Icon as={icon} boxSize={6} />
+      </Square>
+      <VStack align="start" spacing={0}>
+        <Text fontSize="2xl" fontWeight="900" lineHeight="1">{value}</Text>
+        <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase">{label}</Text>
+      </VStack>
+    </HStack>
+  );
+}
+
+function HealthRow({ label, value, color }) {
+  return (
+    <Flex justify="space-between" align="center" fontSize="sm">
+      <Text color="gray.500">{label}</Text>
+      <Badge colorScheme={color} variant="solid" borderRadius="full" px={3}>{value}</Badge>
+    </Flex>
+  );
+}
+
+const CustomTooltip = ({ active, payload }) => {
+  if (active && payload && payload.length) {
+    return (
+      <Box bg="gray.900" color="white" p={3} borderRadius="lg" fontSize="xs">
+        <Text fontWeight="bold">{payload[0].payload.name}</Text>
+        <Text>Completed: {payload[0].value} tasks</Text>
+      </Box>
+    );
+  }
+  return null;
+};
+
+const SelectTransparent = () => (
+  <Badge variant="outline" colorScheme="gray" textTransform="none" px={3} py={1} borderRadius="lg">
+    Last 7 Days
+  </Badge>
+);
+
+const getMockTrendData = () => [
+  { name: "Mon", completed: 4 }, { name: "Tue", completed: 7 },
+  { name: "Wed", completed: 5 }, { name: "Thu", completed: 12 },
+  { name: "Fri", completed: 9 }, { name: "Sat", completed: 15 },
+  { name: "Sun", completed: 10 },
+];

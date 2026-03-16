@@ -32,6 +32,8 @@ import DocumentsPage from "./pages/documents/Documentspage";
 import DocumentEditor from "./pages/documents/Documenteditor";
 import DocumentViewer from "./pages/documents/DocumentViewer";
 import GoPage from "./pages/GoPage";
+import CompanyProfile from "./pages/Company/Companyprofile";
+import CompanySettings from "./pages/Company/Companysettings";
 
 /* ─── Protected Route ────────────────────────────────────────────────────────
  * Redirects to /login if not logged in.
@@ -151,6 +153,8 @@ function App() {
           </Route>
 
           <Route path="team" element={<TeamPage />} />
+          <Route path="company-profile" element={<CompanyProfile />} />
+          <Route path="company-settings" element={<CompanySettings />} />
           <Route path="issues" element={<IssuesPage />} />
 
           <Route path="documents">

@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import api from "../../api";
 import {
   Box, Flex, Heading, Button, Badge, HStack, Text,
@@ -82,10 +82,10 @@ export default function TaskList() {
   const inputBorder = useColorModeValue("#e2e8f0", "#4a5568");
   const inputColor  = useColorModeValue("gray.800", "white");
 
-  const canRead             = isAdmin || hasPermission("task_read");
-  const canCreate           = isAdmin || hasPermission("task_create");
-  const canUpdate           = isAdmin || hasPermission("task_update");
-  const canDelete           = isAdmin || hasPermission("task_delete");
+  const canRead             = isAdmin || user?.isOwner || hasPermission("task_read");
+  const canCreate           = isAdmin || user?.isOwner || hasPermission("task_create");
+  const canUpdate           = isAdmin || user?.isOwner || hasPermission("task_update");
+  const canDelete           = isAdmin || user?.isOwner || hasPermission("task_delete");
   const canFilterByAssignee = isAdmin || hasPermission("task_create") || hasPermission("task_update") || hasPermission("task_delete");
 
   const showMsg = (type, msg) => {
@@ -131,7 +131,7 @@ export default function TaskList() {
   };
 
   useEffect(() => {
-    if (canRead) fetchData();
+    if (canRead) fetchData(true); // always force refresh on mount
   }, [canRead]); // eslint-disable-line
 
   useEffect(() => {
@@ -312,7 +312,7 @@ export default function TaskList() {
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ background: theadBg }}>
-                {["#","Title","Project","Media","Status","Assignee",
+                {["#","Title","Project","Due Date","Media","Status","Assignee",
                   ...(canUpdate||canDelete ? ["Actions"] : [])
                 ].map(h => (
                   <th key={h} style={{ padding:10, textAlign:"left", color:theadColor }}>{h}</th>
@@ -337,6 +337,45 @@ export default function TaskList() {
                       <Text fontSize="xs" color={subColor}>
                         {task.project?.name ? `📁 ${task.project.name}` : "—"}
                       </Text>
+                    </td>
+                    <td style={{ padding:10, borderBottom:`1px solid ${borderColor}` }}>
+                      {(() => {
+                        const due = task.calculatedDeadline || task.dueDate;
+                        if (!due) return <Text fontSize="xs" color={subColor}>—</Text>;
+                        const dueDate = new Date(due);
+                        const now = new Date();
+                        const diffMs = dueDate - now;
+                        const diffHrs = diffMs / (1000 * 60 * 60);
+                        const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+                        const statusName = task.taskStatus?.name?.toLowerCase() || "";
+                        const isCompleted = statusName.includes("complet") || statusName.includes("done") || statusName.includes("closed");
+                        const isOverdue   = diffMs < 0 && !isCompleted;
+                        const isDueToday  = !isCompleted && (diffDays === 0 || (diffHrs >= 0 && diffHrs < 24));
+                        const isDueSoon   = !isCompleted && diffDays > 0 && diffDays <= 2;
+
+                        let color = "green.500";
+                        let bg    = "green.50";
+                        let label = diffDays > 2 ? `${diffDays}d left` : "";
+
+                        if (isCompleted)  { color = "green.500"; bg = "green.50";  label = "Done"; }
+                        else if (isOverdue)   { color = "red.500";   bg = "red.50";   label = "Overdue"; }
+                        else if (isDueToday)  { color = "orange.500"; bg = "orange.50"; label = "Due Today"; }
+                        else if (isDueSoon)   { color = "yellow.600"; bg = "yellow.50"; label = `${diffDays}d left`; }
+
+                        return (
+                          <Box>
+                            <Text fontSize="xs" fontWeight="600" color={color}>
+                              {dueDate.toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" })}
+                            </Text>
+                            {label && (
+                              <Text fontSize="9px" fontWeight="700" color={color}
+                                bg={bg} px={1} borderRadius="sm" display="inline-block" mt="1px">
+                                {label}
+                              </Text>
+                            )}
+                          </Box>
+                        );
+                      })()}
                     </td>
                     <td style={{ padding:10, borderBottom:`1px solid ${borderColor}`, textAlign:"center" }}>
                       {mediaItems.length > 0 ? (

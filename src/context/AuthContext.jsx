@@ -1,81 +1,99 @@
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, useRef } from "react";
 import api from "../api";
 
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [projects, setProjects] = useState([]); 
+  const [projects, setProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
+  const [projectMembers, setProjectMembers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [projectsLoading, setProjectsLoading] = useState(false);
 
+  const projectsFetchedForUser = useRef(null);
+  const profileFetched = useRef(false);
+
+  // Corrected refreshProfile to ensure state is replaced properly
   const refreshProfile = async () => {
     try {
       const res = await api.get("/auth/profile");
-      // Mapping response: res.data should contain the user and their company's projects
-      const userData = res.data.user || res.data;
-      const projectData = res.data.projects || [];
-      
-      setUser(userData);
-      setProjects(projectData);
+      setUser(res.data); // res.data should contain the company object
+      return res.data;
     } catch (err) {
       console.error("Profile refresh failed:", err);
-      // Don't clear user here to prevent flickering on temporary network issues
+      setUser(null);
+      localStorage.removeItem("token");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchProjects = async () => {
+    setProjectsLoading(true);
+    try {
+      const res = await api.get("/projects");
+      const list = res.data || [];
+      setProjects(list);
+      setSelectedProject(prev => {
+        if (!prev) return null;
+        return list.find(p => p._id === prev._id) || null;
+      });
+    } catch (err) {
+      setProjects([]);
+    } finally {
+      setProjectsLoading(false);
     }
   };
 
   useEffect(() => {
-    const initAuth = async () => {
-      try {
-        await refreshProfile();
-      } catch (e) {
-        setUser(null);
-      } finally {
-        setLoading(false);
-      }
-    };
-    initAuth();
+    if (profileFetched.current) return;
+    profileFetched.current = true;
+    refreshProfile();
   }, []);
 
-  const login = (data) => {
-    setUser(data.user);
-    setProjects(data.projects || []);
+  const userId = user?._id?.toString() || null;
+  useEffect(() => {
+    if (userId && projectsFetchedForUser.current !== userId) {
+      projectsFetchedForUser.current = userId;
+      fetchProjects();
+    } else if (!userId) {
+      projectsFetchedForUser.current = null;
+      setProjects([]);
+      setSelectedProject(null);
+    }
+  }, [userId]);
+
+  const login = (userData, token) => {
+    setUser(userData);
+    profileFetched.current = true;
+    if (token) localStorage.setItem("token", token);
   };
 
   const logout = () => {
     setUser(null);
     setProjects([]);
     setSelectedProject(null);
-    localStorage.clear();
-  };
-
-  const selectProject = (projectId) => {
-    const found = projects.find((p) => p._id === projectId);
-    setSelectedProject(found || null);
+    profileFetched.current = false;
+    projectsFetchedForUser.current = null;
+    localStorage.removeItem("token");
   };
 
   const hasPermission = (perm) => {
-    // Super-admin check
-    if (user?.role?.name?.toLowerCase() === "admin") return true;
-    // Standard permission check
-    return user?.permissions?.includes(perm) || false;
+    if (!user || !user.role) return false;
+    if (user.role.name?.toLowerCase() === "admin" || user.isOwner) return true;
+    return user.role.permissions?.some(p => p?.toLowerCase().trim() === perm.toLowerCase().trim());
   };
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        projects,
-        selectedProject,
-        loading,
-        login,
-        logout,
-        selectProject,
-        hasPermission,
-        refreshProfile,
-      }}
-    >
-      {!loading && children}
+    <AuthContext.Provider value={{
+      user, loading, login, logout, hasPermission, refreshProfile,
+      projects, setProjects, projectsLoading,
+      selectedProject, projectMembers,
+      selectProject: (p) => setSelectedProject(p), 
+      refreshProjects: fetchProjects,
+    }}>
+      {children}
     </AuthContext.Provider>
   );
 };
