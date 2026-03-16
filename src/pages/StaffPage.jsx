@@ -16,23 +16,25 @@ import { useSocket } from "../hooks/useSocket";
 export default function StaffPage() {
   const navigate = useNavigate();
   const toast = useToast();
-  const { hasPermission, user } = useAuth();
+  const { hasPermission, user, isSuperAdmin } = useAuth();
   const isAdmin = user?.role?.name?.toLowerCase() === "admin";
 
-  const canRead   = isAdmin || hasPermission("Staff_read");
-  const canCreate = isAdmin || hasPermission("Staff_create");
-  const canUpdate = isAdmin || hasPermission("Staff_update");
-  const canDelete = isAdmin || hasPermission("Staff_delete");
+  // SuperAdmin bypasses all permission checks
+  const canRead   = isSuperAdmin || isAdmin || hasPermission("Staff_read");
+  const canCreate = isSuperAdmin || isAdmin || hasPermission("Staff_create");
+  const canUpdate = isSuperAdmin || isAdmin || hasPermission("Staff_update");
+  const canDelete = isSuperAdmin || isAdmin || hasPermission("Staff_delete");
 
-  const [staffs, setStaffs]           = useState([]);
-  const [roles, setRoles]             = useState([]);
-  const [search, setSearch]           = useState("");
-  const [roleFilter, setRoleFilter]   = useState("");
-  const [loading, setLoading]         = useState(true);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [staffs, setStaffs]               = useState([]);
+  const [roles, setRoles]                 = useState([]);
+  const [search, setSearch]               = useState("");
+  const [roleFilter, setRoleFilter]       = useState("");
+  const [companyFilter, setCompanyFilter] = useState(""); // superadmin only
+  const [loading, setLoading]             = useState(true);
+  const [currentPage, setCurrentPage]     = useState(1);
   const [staffsPerPage, setStaffsPerPage] = useState(5);
-  const [deleteId, setDeleteId]       = useState(null);
-  const [deleting, setDeleting]       = useState(false);
+  const [deleteId, setDeleteId]           = useState(null);
+  const [deleting, setDeleting]           = useState(false);
 
   const cardBg      = useColorModeValue("white", "gray.800");
   const theadBg     = useColorModeValue("#bee3f8", "#2a4365");
@@ -49,7 +51,11 @@ export default function StaffPage() {
   const fetchStaff = async () => {
     try {
       const res = await api.get("/staff");
-      setStaffs(Array.isArray(res.data) ? res.data : []);
+      // Exclude the superadmin account itself from the list
+      const list = Array.isArray(res.data)
+        ? res.data.filter(s => !s.isSuperAdmin)
+        : [];
+      setStaffs(list);
     } catch {
       toast({ title: "Error fetching staff", status: "error" });
     }
@@ -73,12 +79,18 @@ export default function StaffPage() {
   useSocket("staff:updated", (s) => setStaffs(prev => prev.map(x => x._id === s._id ? s : x)));
   useSocket("staff:deleted", ({ _id }) => setStaffs(prev => prev.filter(x => x._id !== _id)));
 
+  // Get unique companies from staff list (for superadmin filter dropdown)
+  const uniqueCompanies = isSuperAdmin
+    ? [...new Map(staffs.filter(s => s.company).map(s => [s.company._id, s.company])).values()]
+    : [];
+
   const filteredStaffs = staffs
     .filter(s => search
       ? s.name?.toLowerCase().includes(search.toLowerCase()) ||
         s.email?.toLowerCase().includes(search.toLowerCase())
       : true)
-    .filter(s => roleFilter ? s.role?._id === roleFilter : true);
+    .filter(s => roleFilter ? s.role?._id === roleFilter : true)
+    .filter(s => companyFilter ? s.company?._id === companyFilter : true);
 
   const totalPages    = Math.max(1, Math.ceil(filteredStaffs.length / staffsPerPage));
   const startIndex    = (currentPage - 1) * staffsPerPage;
@@ -88,11 +100,9 @@ export default function StaffPage() {
     setDeleting(true);
     try {
       await api.delete(`/staff/${deleteId}`);
-      // immediately remove from state — don't rely on socket
       setStaffs(prev => prev.filter(s => s._id !== deleteId));
       toast({ title: "Staff deleted", status: "success" });
       setDeleteId(null);
-      // adjust page if last item on page was deleted
       const newFiltered = filteredStaffs.filter(s => s._id !== deleteId);
       const newTotalPages = Math.max(1, Math.ceil(newFiltered.length / staffsPerPage));
       if (currentPage > newTotalPages) setCurrentPage(newTotalPages);
@@ -113,6 +123,14 @@ export default function StaffPage() {
       </Box>
     );
   }
+
+  // Table columns — add "Company" column for superadmin
+  const columns = [
+    "#", "Name", "Email",
+    ...(isSuperAdmin ? ["Company"] : []),
+    "Role", "Status",
+    ...(canUpdate || canDelete ? ["Actions"] : []),
+  ];
 
   return (
     <Box bg={cardBg} p={6} borderRadius="md" boxShadow="md">
@@ -140,6 +158,11 @@ export default function StaffPage() {
         <Flex align="center" gap={2}>
           <MdPeople size={22} color={iconClr} />
           <Heading size="md" color={textColor}>Staff</Heading>
+          {isSuperAdmin && (
+            <Badge colorScheme="yellow" fontSize="xs" ml={2}>
+              All Companies · {staffs.length} total
+            </Badge>
+          )}
         </Flex>
         {canCreate && (
           <Button colorScheme="brand" leftIcon={<MdPersonAdd size={18} />}
@@ -165,6 +188,19 @@ export default function StaffPage() {
         >
           {roles.map(r => <option key={r._id} value={r._id}>{r.name}</option>)}
         </Select>
+        {/* SuperAdmin: filter by company */}
+        {isSuperAdmin && uniqueCompanies.length > 0 && (
+          <Select
+            placeholder="Filter by Company"
+            maxW="200px"
+            value={companyFilter}
+            onChange={e => { setCompanyFilter(e.target.value); setCurrentPage(1); }}
+          >
+            {uniqueCompanies.map(c => (
+              <option key={c._id} value={c._id}>{c.name}</option>
+            ))}
+          </Select>
+        )}
       </Flex>
 
       {/* CONTENT */}
@@ -184,9 +220,7 @@ export default function StaffPage() {
             <Table variant="simple" size="sm">
               <Thead bg={theadBg}>
                 <Tr>
-                  {["#", "Name", "Email", "Role", "Status",
-                    ...(canUpdate || canDelete ? ["Actions"] : [])
-                  ].map(h => (
+                  {columns.map(h => (
                     <Th
                       key={h}
                       color={theadColor}
@@ -207,47 +241,43 @@ export default function StaffPage() {
                     _hover={{ bg: rowHover }}
                     transition="background 0.15s"
                   >
-                    <Td color={textColor} fontSize="sm">
-                      {startIndex + index + 1}
+                    <Td color={textColor} fontSize="sm">{startIndex + index + 1}</Td>
+                    <Td>
+                      <Text fontWeight="600" fontSize="sm" color={textColor}>{staff.name}</Text>
                     </Td>
                     <Td>
-                      <Text fontWeight="600" fontSize="sm" color={textColor}>
-                        {staff.name}
-                      </Text>
+                      <Text fontSize="sm" color={textColor}>{staff.email}</Text>
                     </Td>
-                    <Td>
-                      <Text fontSize="sm" color={textColor}>
-                        {staff.email}
-                      </Text>
-                    </Td>
+                    {/* Company column — superadmin only */}
+                    {isSuperAdmin && (
+                      <Td>
+                        <Badge colorScheme="purple" borderRadius="full" px={2} fontSize="xs">
+                          {staff.company?.name || "—"}
+                        </Badge>
+                      </Td>
+                    )}
                     <Td>
                       <Badge colorScheme="brand" borderRadius="full" px={2}>
                         {staff.role?.name || "N/A"}
                       </Badge>
                     </Td>
                     <Td>
-                      <Badge colorScheme="green" borderRadius="full" px={2}>
-                        ACTIVE
-                      </Badge>
+                      <Badge colorScheme="green" borderRadius="full" px={2}>ACTIVE</Badge>
                     </Td>
                     {(canUpdate || canDelete) && (
                       <Td textAlign="center">
                         <HStack justify="center">
                           {canUpdate && (
                             <IconButton
-                              size="sm"
-                              icon={<MdEdit size={16} />}
-                              aria-label="Edit"
-                              colorScheme="gray"
+                              size="sm" icon={<MdEdit size={16} />}
+                              aria-label="Edit" colorScheme="gray"
                               onClick={() => navigate(`/admin/staff/edit/${staff._id}`)}
                             />
                           )}
                           {canDelete && (
                             <IconButton
-                              size="sm"
-                              icon={<MdDelete size={16} />}
-                              aria-label="Delete"
-                              colorScheme="red"
+                              size="sm" icon={<MdDelete size={16} />}
+                              aria-label="Delete" colorScheme="red"
                               onClick={() => setDeleteId(staff._id)}
                             />
                           )}
@@ -279,8 +309,7 @@ export default function StaffPage() {
             </HStack>
             <HStack>
               <IconButton
-                size="sm"
-                icon={<ChevronLeftIcon />}
+                size="sm" icon={<ChevronLeftIcon />}
                 isDisabled={currentPage === 1}
                 onClick={() => setCurrentPage(p => p - 1)}
               />
@@ -295,8 +324,7 @@ export default function StaffPage() {
                 </Button>
               ))}
               <IconButton
-                size="sm"
-                icon={<ChevronRightIcon />}
+                size="sm" icon={<ChevronRightIcon />}
                 isDisabled={currentPage === totalPages}
                 onClick={() => setCurrentPage(p => p + 1)}
               />

@@ -34,11 +34,8 @@ import DocumentViewer from "./pages/documents/DocumentViewer";
 import GoPage from "./pages/GoPage";
 import CompanyProfile from "./pages/Company/Companyprofile";
 import CompanySettings from "./pages/Company/Companysettings";
+import SuperAdminCompanies from "./pages/Superadmincompanies"; // ← NEW
 
-/* ─── Protected Route ────────────────────────────────────────────────────────
- * Redirects to /login if not logged in.
- * Shows loading spinner while auth is being checked.
- */
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
 
@@ -54,25 +51,14 @@ function ProtectedRoute({ children }) {
     );
   }
 
-  if (!user) {
-    return <Navigate to="/login" replace />;
-  }
-
+  if (!user) return <Navigate to="/login" replace />;
   return children;
 }
 
-/* ─── Public Route ───────────────────────────────────────────────────────────
- * If already logged in, redirect away from login/signup pages.
- */
 function PublicRoute({ children }) {
   const { user, loading } = useAuth();
-
   if (loading) return null;
-
-  if (user) {
-    return <Navigate to="/admin" replace />;
-  }
-
+  if (user) return <Navigate to="/admin" replace />;
   return children;
 }
 
@@ -81,42 +67,20 @@ function App() {
     <BrowserRouter>
       <Routes>
         {/* ── Public routes ── */}
-        <Route
-          path="/"
-          element={
-            <PublicRoute>
-              <Login />
-            </PublicRoute>
-          }
-        />
-        <Route
-          path="/login"
-          element={
-            <PublicRoute>
-              <Login />
-            </PublicRoute>
-          }
-        />
-        <Route
-          path="/signup"
-          element={
-            <PublicRoute>
-              <Signup />
-            </PublicRoute>
-          }
-        />
+        <Route path="/"      element={<PublicRoute><Login /></PublicRoute>} />
+        <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
+        <Route path="/signup" element={<PublicRoute><Signup /></PublicRoute>} />
 
         {/* ── Protected admin routes ── */}
         <Route
           path="/admin"
-          element={
-            <ProtectedRoute>
-              <AdminLayout />
-            </ProtectedRoute>
-          }
+          element={<ProtectedRoute><AdminLayout /></ProtectedRoute>}
         >
           <Route index element={<Dashboard />} />
           <Route path="profile" element={<AdminProfile />} />
+
+          {/* SuperAdmin only */}
+          <Route path="companies" element={<SuperAdminCompanies />} />  {/* ← NEW */}
 
           <Route path="staff">
             <Route index element={<StaffPage />} />

@@ -1,9 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../api";
 import { useAuth } from "../context/AuthContext";
 import { AiOutlineEye, AiOutlineEyeInvisible } from "react-icons/ai";
 import { useColorModeValue } from "@chakra-ui/react";
+
+const SUPERADMIN_EMAIL = "admin@taskapp.com"; // change if you use a different email
 
 function Login() {
   const { login } = useAuth();
@@ -14,11 +16,10 @@ function Login() {
   const [success,      setSuccess]      = useState("");
   const [loading,      setLoading]      = useState(false);
 
-  // Company selector state
-  const [companies,          setCompanies]          = useState([]);   // list from API
-  const [selectedCompanyId,  setSelectedCompanyId]  = useState("");
-  const [loadingCompanies,   setLoadingCompanies]   = useState(false);
-  const [emailChecked,       setEmailChecked]       = useState(false); // true after lookup
+  const [companies,         setCompanies]         = useState([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState("");
+  const [loadingCompanies,  setLoadingCompanies]  = useState(false);
+  const [emailChecked,      setEmailChecked]      = useState(false);
 
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -34,21 +35,31 @@ function Login() {
   const errClr   = useColorModeValue("#b91c1c", "#fc8181");
   const errBdr   = useColorModeValue("1px solid #fca5a5", "1px solid #c53030");
 
-  // When email loses focus, look up which companies it belongs to
+  // Detect superadmin email (case-insensitive)
+  const isSuperAdminEmail = email.trim().toLowerCase() === SUPERADMIN_EMAIL.toLowerCase();
+
   const handleEmailBlur = async () => {
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
+
+    // SuperAdmin: skip company lookup entirely
+    if (isSuperAdminEmail) {
+      setCompanies([]);
+      setSelectedCompanyId("");
+      setEmailChecked(false);
+      return;
+    }
+
     setLoadingCompanies(true);
     setCompanies([]);
     setSelectedCompanyId("");
     setEmailChecked(false);
     try {
-      const res = await api.get(`/auth/companies?email=${encodeURIComponent(email)}`);
+      const res  = await api.get(`/auth/companies?email=${encodeURIComponent(email)}`);
       const list = res.data?.companies || [];
       setCompanies(list);
-      if (list.length === 1) setSelectedCompanyId(list[0]._id); // auto-select if only one
+      if (list.length === 1) setSelectedCompanyId(list[0]._id);
       setEmailChecked(true);
     } catch {
-      // silently fail — user can still type company name manually
       setEmailChecked(true);
     } finally {
       setLoadingCompanies(false);
@@ -60,7 +71,9 @@ function Login() {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "Please enter a valid email address";
     if (!password)           return "Password is required";
     if (password.length < 6) return "Password must be at least 6 characters";
-    if (companies.length > 1 && !selectedCompanyId) return "Please select a company";
+    // SuperAdmin needs no company selection
+    if (!isSuperAdminEmail && companies.length > 1 && !selectedCompanyId)
+      return "Please select a company";
     return null;
   };
 
@@ -72,9 +85,12 @@ function Login() {
     setLoading(true);
     try {
       const payload = { email, password };
-      if (selectedCompanyId) payload.companyId = selectedCompanyId;
+      // Only send companyId for normal users
+      if (!isSuperAdminEmail && selectedCompanyId) {
+        payload.companyId = selectedCompanyId;
+      }
 
-      const res = await api.post("/auth/login", payload);
+      const res      = await api.post("/auth/login", payload);
       const userData = res.data?.data || res.data?.staff || res.data;
       if (!userData) throw new Error("Invalid response from server");
       const token = res.data?.token;
@@ -98,7 +114,10 @@ function Login() {
   return (
     <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", background:pageBg }}>
       <form onSubmit={handleSubmit} style={{ width:"380px", padding:"30px", background:cardBg, borderRadius:"10px", boxShadow:"0 10px 25px rgba(0,0,0,0.15)" }}>
-        <h2 style={{ textAlign:"center", marginBottom:"20px", fontSize:"22px", fontWeight:"bold", color:titleClr }}>🔐 Login</h2>
+
+        <h2 style={{ textAlign:"center", marginBottom:"20px", fontSize:"22px", fontWeight:"bold", color:titleClr }}>
+          🔐 Login
+        </h2>
 
         {success && (
           <div style={{ color:"#166534", fontSize:"13px", marginBottom:"12px", textAlign:"center", background:"#f0fdf4", padding:"10px", borderRadius:"6px", border:"1px solid #86efac" }}>
@@ -112,29 +131,43 @@ function Login() {
         )}
 
         {/* ── Email ── */}
-        <label style={{ display:"block", fontSize:"13px", fontWeight:"600", color:labelClr, marginBottom:"5px" }}>Email</label>
+        <label style={{ display:"block", fontSize:"13px", fontWeight:"600", color:labelClr, marginBottom:"5px" }}>
+          Email
+        </label>
         <input
           type="email"
           placeholder="Enter your email"
           value={email}
-          onChange={e => { setEmail(e.target.value); setEmailChecked(false); setCompanies([]); setSelectedCompanyId(""); }}
+          onChange={e => {
+            setEmail(e.target.value);
+            setEmailChecked(false);
+            setCompanies([]);
+            setSelectedCompanyId("");
+          }}
           onBlur={handleEmailBlur}
           required
           style={{ ...inputStyle, marginBottom:"15px" }}
         />
 
-        {/* ── Company selector (shown after email lookup) ── */}
-        {loadingCompanies && (
+        {/* ── SuperAdmin badge ── */}
+        {isSuperAdminEmail && (
+          <div style={{ fontSize:"13px", color:"#92400e", background:"#fffbeb", border:"1px solid #fcd34d", borderRadius:"6px", padding:"8px 12px", marginBottom:"12px", display:"flex", alignItems:"center", gap:"8px" }}>
+            ⭐ <span>Logging in as <strong>Super Admin</strong></span>
+          </div>
+        )}
+
+        {/* ── Company lookup states (hidden for superadmin) ── */}
+        {!isSuperAdminEmail && loadingCompanies && (
           <p style={{ fontSize:"12px", color:"#888", marginBottom:"12px" }}>🔍 Looking up companies...</p>
         )}
 
-        {emailChecked && companies.length === 0 && (
+        {!isSuperAdminEmail && emailChecked && companies.length === 0 && (
           <div style={{ fontSize:"12px", color:errClr, background:errBg, border:errBdr, borderRadius:"6px", padding:"8px 10px", marginBottom:"12px" }}>
             ⚠️ No account found for this email.
           </div>
         )}
 
-        {companies.length === 1 && (
+        {!isSuperAdminEmail && companies.length === 1 && (
           <div style={{ fontSize:"13px", color:"#166534", background:"#f0fdf4", border:"1px solid #86efac", borderRadius:"6px", padding:"8px 10px", marginBottom:"12px", display:"flex", alignItems:"center", gap:"8px" }}>
             {companies[0].logo
               ? <img src={companies[0].logo} alt="" style={{ width:"22px", height:"22px", borderRadius:"4px", objectFit:"cover" }}/>
@@ -144,7 +177,7 @@ function Login() {
           </div>
         )}
 
-        {companies.length > 1 && (
+        {!isSuperAdminEmail && companies.length > 1 && (
           <>
             <label style={{ display:"block", fontSize:"13px", fontWeight:"600", color:labelClr, marginBottom:"5px" }}>
               Select Company
@@ -155,11 +188,11 @@ function Login() {
                   key={c._id}
                   onClick={() => setSelectedCompanyId(c._id)}
                   style={{
-                    display: "flex", alignItems: "center", gap: "10px",
-                    padding: "10px 12px", borderRadius: "8px", cursor: "pointer",
+                    display:"flex", alignItems:"center", gap:"10px",
+                    padding:"10px 12px", borderRadius:"8px", cursor:"pointer",
                     border: selectedCompanyId === c._id ? "2px solid #924485" : inputBdr,
                     background: selectedCompanyId === c._id ? (inputBg === "#ffffff" ? "#fdf4ff" : "#2d1f30") : inputBg,
-                    transition: "all 0.2s",
+                    transition:"all 0.2s",
                   }}
                 >
                   {c.logo
@@ -182,7 +215,9 @@ function Login() {
         )}
 
         {/* ── Password ── */}
-        <label style={{ display:"block", fontSize:"13px", fontWeight:"600", color:labelClr, marginBottom:"5px" }}>Password</label>
+        <label style={{ display:"block", fontSize:"13px", fontWeight:"600", color:labelClr, marginBottom:"5px" }}>
+          Password
+        </label>
         <div style={{ position:"relative", marginBottom:"20px" }}>
           <input
             type={showPassword ? "text" : "password"}

@@ -4,21 +4,24 @@ import api from "../api";
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [projects, setProjects] = useState([]);
+  const [user, setUser]                   = useState(null);
+  const [projects, setProjects]           = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
-  const [projectMembers, setProjectMembers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [projectMembers, setProjectMembers]   = useState([]);
+  const [loading, setLoading]             = useState(true);
   const [projectsLoading, setProjectsLoading] = useState(false);
 
-  const projectsFetchedForUser = useRef(null);
-  const profileFetched = useRef(false);
+  // SuperAdmin: list of all companies + selected company filter
+  const [companies, setCompanies]                   = useState([]);
+  const [selectedCompany, setSelectedCompany]       = useState(null); // null = all companies
 
-  // Corrected refreshProfile to ensure state is replaced properly
+  const projectsFetchedForUser = useRef(null);
+  const profileFetched         = useRef(false);
+
   const refreshProfile = async () => {
     try {
       const res = await api.get("/auth/profile");
-      setUser(res.data); // res.data should contain the company object
+      setUser(res.data);
       return res.data;
     } catch (err) {
       console.error("Profile refresh failed:", err);
@@ -32,17 +35,27 @@ export const AuthProvider = ({ children }) => {
   const fetchProjects = async () => {
     setProjectsLoading(true);
     try {
-      const res = await api.get("/projects");
+      const res  = await api.get("/projects");
       const list = res.data || [];
       setProjects(list);
       setSelectedProject(prev => {
         if (!prev) return null;
         return list.find(p => p._id === prev._id) || null;
       });
-    } catch (err) {
+    } catch {
       setProjects([]);
     } finally {
       setProjectsLoading(false);
+    }
+  };
+
+  // SuperAdmin: fetch all companies
+  const fetchCompanies = async () => {
+    try {
+      const res = await api.get("/company/all");
+      setCompanies(res.data || []);
+    } catch {
+      setCompanies([]);
     }
   };
 
@@ -52,17 +65,24 @@ export const AuthProvider = ({ children }) => {
     refreshProfile();
   }, []);
 
-  const userId = user?._id?.toString() || null;
+  const userId        = user?._id?.toString() || null;
+  const isSuperAdmin  = !!user?.isSuperAdmin;
+
   useEffect(() => {
-    if (userId && projectsFetchedForUser.current !== userId) {
-      projectsFetchedForUser.current = userId;
-      fetchProjects();
-    } else if (!userId) {
+    if (!userId) {
       projectsFetchedForUser.current = null;
       setProjects([]);
       setSelectedProject(null);
+      setCompanies([]);
+      setSelectedCompany(null);
+      return;
     }
-  }, [userId]);
+    if (projectsFetchedForUser.current !== userId) {
+      projectsFetchedForUser.current = userId;
+      fetchProjects();
+      if (isSuperAdmin) fetchCompanies();
+    }
+  }, [userId, isSuperAdmin]);
 
   const login = (userData, token) => {
     setUser(userData);
@@ -74,13 +94,17 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
     setProjects([]);
     setSelectedProject(null);
-    profileFetched.current = false;
+    setCompanies([]);
+    setSelectedCompany(null);
+    profileFetched.current         = false;
     projectsFetchedForUser.current = null;
     localStorage.removeItem("token");
   };
 
   const hasPermission = (perm) => {
     if (!user || !user.role) return false;
+    // SuperAdmin bypasses ALL permission checks
+    if (user.isSuperAdmin) return true;
     if (user.role.name?.toLowerCase() === "admin" || user.isOwner) return true;
     return user.role.permissions?.some(p => p?.toLowerCase().trim() === perm.toLowerCase().trim());
   };
@@ -90,8 +114,14 @@ export const AuthProvider = ({ children }) => {
       user, loading, login, logout, hasPermission, refreshProfile,
       projects, setProjects, projectsLoading,
       selectedProject, projectMembers,
-      selectProject: (p) => setSelectedProject(p), 
+      selectProject: (p) => setSelectedProject(typeof p === "string" ? projects.find(x => x._id === p) || null : p),
       refreshProjects: fetchProjects,
+      // SuperAdmin extras
+      isSuperAdmin,
+      companies,
+      selectedCompany,
+      selectCompany: (c) => setSelectedCompany(c),
+      refreshCompanies: fetchCompanies,
     }}>
       {children}
     </AuthContext.Provider>
