@@ -11,14 +11,19 @@ import { MdAccessTime } from "react-icons/md";
 
 const API_BASE = import.meta.env.VITE_API_TARGET || "http://localhost:5000";
 
-function resolveMediaUrl(media) {
-  if (!media || typeof media !== "string") return null;
-  if (media.startsWith("http://") || media.startsWith("https://")) return media;
-  return `${API_BASE}${media}`;
+// ── media helpers — handle both string (old) and object {url,...} (new) ───────
+function getMediaUrl(m) {
+  if (!m) return null;
+  const raw = typeof m === "string" ? m : (m.url || m.path || null);
+  if (!raw) return null;
+  if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
+  return `${API_BASE}${raw}`;
 }
 
-function isVideoFile(url) {
+function isVideoFile(m) {
+  const url = typeof m === "string" ? m : (m?.url || m?.mimetype || "");
   if (!url) return false;
+  if (url.includes("video/")) return true;
   const ext = url.split("?")[0].split(".").pop().toLowerCase();
   return ["mp4", "webm", "ogg", "mov"].includes(ext);
 }
@@ -43,9 +48,9 @@ export default function EditTask() {
   const [taskStatus,      setTaskStatus]      = useState("");
   const [assignee,        setAssignee]        = useState("");
   const [requiredHours,   setRequiredHours]   = useState("");
-  const [deadline,        setDeadline]        = useState("");   // editable due date
+  const [deadline,        setDeadline]        = useState("");
   const [deadlineLoading, setDeadlineLoading] = useState(false);
-  const [autoCalc,        setAutoCalc]        = useState(false); // track if user touched hours
+  const [autoCalc,        setAutoCalc]        = useState(false);
   const [existingMedia,   setExistingMedia]   = useState([]);
   const [statuses,        setStatuses]        = useState([]);
   const [staffList,       setStaffList]       = useState([]);
@@ -90,16 +95,18 @@ export default function EditTask() {
         setAssignee(task.assignee?._id || "");
         setRequiredHours(task.requiredHours || "");
 
-        // Load existing due date into the editable field
         const existingDue = task.calculatedDeadline || task.dueDate || "";
         setDeadline(toLocalDatetimeInput(existingDue));
 
         const foundMentions = (task.description || "").match(/@(\w+)/g);
         if (foundMentions) setMentions(foundMentions.map(m => m.slice(1)));
+
+        // handle both string[] and object[] media
         let mediaArr = [];
         if (Array.isArray(task.media)) mediaArr = task.media.filter(Boolean);
-        else if (typeof task.media === "string" && task.media) mediaArr = [task.media];
+        else if (task.media) mediaArr = [task.media];
         setExistingMedia(mediaArr);
+
         setStatuses(statusRes.data || []);
         setStaffList(staffRes.data || []);
       } catch {
@@ -111,9 +118,9 @@ export default function EditTask() {
     fetchData();
   }, [id]);
 
-  // ── Auto-recalculate deadline ONLY when assignee or hours change ──────────
+  // Auto-recalculate deadline when hours change
   useEffect(() => {
-    if (!autoCalc) return; // don't auto-calc on initial load
+    if (!autoCalc) return;
     clearTimeout(deadlineTimer.current);
     if (!assignee || !requiredHours || Number(requiredHours) <= 0) return;
     setDeadlineLoading(true);
@@ -173,7 +180,7 @@ export default function EditTask() {
         assignee,
         taskStatus,
         requiredHours:      requiredHours ? Number(requiredHours) : null,
-        calculatedDeadline: deadline ? new Date(deadline).toISOString() : null, // ← send edited due date
+        calculatedDeadline: deadline ? new Date(deadline).toISOString() : null,
         project:            selectedProject?._id || null,
       });
       setSuccessMsg("Task updated successfully!");
@@ -195,8 +202,9 @@ export default function EditTask() {
 
   if (loading) return <Flex justify="center" py={10}><Spinner size="lg" color="brand.500"/></Flex>;
 
+  // Build display list using updated helpers
   const displayList = existingMedia
-    .map(m => ({ url: resolveMediaUrl(m), isVideo: isVideoFile(m) }))
+    .map(m => ({ url: getMediaUrl(m), isVideo: isVideoFile(m) }))
     .filter(item => item.url);
 
   return (
@@ -295,7 +303,6 @@ export default function EditTask() {
           </Select>
         </FormControl>
 
-        {/* Required Hours */}
         <FormControl mb={4}>
           <FormLabel color={textColor}>
             <HStack spacing={2}>
@@ -315,7 +322,6 @@ export default function EditTask() {
           </Text>
         </FormControl>
 
-        {/* ── NEW: Editable Due Date ── */}
         <FormControl mb={4}>
           <FormLabel color={textColor}>
             <HStack spacing={2}>
@@ -327,7 +333,6 @@ export default function EditTask() {
             type="datetime-local"
             value={deadline}
             onChange={e => setDeadline(e.target.value)}
-            // No min/max — past and future dates both allowed
           />
           {deadlineLoading && (
             <HStack spacing={2} mt={1}>
@@ -338,16 +343,10 @@ export default function EditTask() {
           {deadline && !deadlineLoading && (
             <Box mt={2} p={3} bg={deadlineBg} borderRadius="lg" border={`1px solid ${deadlineBdr}`}>
               <HStack spacing={2}>
-                <Text fontSize="lg">📅</Text>
                 <Box>
-                  <Text fontSize="xs" color="purple.600" _dark={{ color:"purple.300" }} fontWeight="600">
-                    Due Date
-                  </Text>
+                  <Text fontSize="xs" color="purple.600" _dark={{ color:"purple.300" }} fontWeight="600">Due Date</Text>
                   <Text fontSize="sm" fontWeight="bold" color="purple.700" _dark={{ color:"purple.200" }}>
                     {formatDeadline(deadline)}
-                  </Text>
-                  <Text fontSize="xs" color="purple.500" _dark={{ color:"purple.400" }}>
-                    You can manually override this date
                   </Text>
                 </Box>
               </HStack>
