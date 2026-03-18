@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Box, Flex, Text, VStack, HStack, Select,
   IconButton, useColorMode, useColorModeValue, Tooltip,
@@ -13,7 +13,8 @@ import {
   MdCheckBox, MdLabel, MdPerson, MdLogout, MdAssignment,
   MdFolder, MdFolderOpen, MdDarkMode, MdLightMode, MdBugReport,
   MdKeyboardArrowDown, MdChevronLeft, MdChevronRight, MdDescription,
-  MdBusiness, MdSettings, MdDomain,
+  MdBusiness, MdSettings, MdDomain, MdCreditCard, MdHistory, MdCardMembership,
+  MdWarning,
 } from "react-icons/md";
 import { brand } from "../theme";
 
@@ -31,7 +32,8 @@ function AdminLayout() {
     companies = [], selectedCompany, selectCompany,
   } = useAuth();
 
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen,  setSidebarOpen]  = useState(true);
+  const [subExpired,   setSubExpired]   = useState(false);
 
   const projectRoutes = [
     "/admin/projects", "/admin/tasks", "/admin/task-status",
@@ -40,13 +42,35 @@ function AdminLayout() {
   const isProjectGroupActive = projectRoutes.some(p => location.pathname.startsWith(p));
   const [projectsOpen, setProjectsOpen] = useState(isProjectGroupActive);
 
+  const isOwner  = user?.isOwner;
+  const isAdmin  = user?.role?.name?.toLowerCase() === "admin";
+
+  // ── Check subscription on load for non-superadmin ─────────────────────────
+  useEffect(() => {
+    if (isSuperAdmin || !user) return;
+    if (location.pathname === "/admin/subscription/expired") return;
+
+    const checkSub = async () => {
+      try {
+        const r = await api.get("/subscription/my");
+        if (r.data?.isExpired) {
+          setSubExpired(true);
+          navigate("/admin/subscription/expired");
+        }
+      } catch (err) {
+        if (err?.response?.data?.code === "SUBSCRIPTION_EXPIRED") {
+          setSubExpired(true);
+          navigate("/admin/subscription/expired");
+        }
+      }
+    };
+    checkSub();
+  }, [location.pathname, isSuperAdmin, user]); // eslint-disable-line
+
   const sidebarBg    = useColorModeValue(brand.sidebar || "#1A202C", "gray.900");
   const topbarBg     = useColorModeValue("white", "gray.800");
   const topbarBorder = useColorModeValue("#e2e8f0", "#2d3748");
   const contentBg    = useColorModeValue("#F7FAFC", "#171923");
-
-  const isAdmin = user?.role?.name?.toLowerCase() === "admin";
-  const isOwner = user?.isOwner;
 
   const handleLogout = async () => {
     try { await api.post("/auth/logout"); } finally {
@@ -62,6 +86,7 @@ function AdminLayout() {
         w={sidebarOpen ? EXPANDED_W : COLLAPSED_W}
         bg={sidebarBg} color="white"
         transition="0.3s ease" py="5" px="3" zIndex="10" boxShadow="xl"
+        overflowY="auto" overflowX="hidden"
       >
         {/* Logo + collapse toggle */}
         <Flex justify={sidebarOpen ? "space-between" : "center"} align="center" mb="8" px="2">
@@ -79,11 +104,11 @@ function AdminLayout() {
           />
         </Flex>
 
-        <VStack align="stretch" spacing="2">
+        <VStack align="stretch" spacing="1">
           {/* Dashboard */}
           <NavItem to="/admin" icon={MdDashboard} label="Dashboard" sidebarOpen={sidebarOpen} end />
 
-          {/* ── SUPERADMIN: Companies section ─────────────────────────────── */}
+          {/* ── SUPERADMIN section ─────────────────────────────────────────── */}
           {isSuperAdmin && (
             <>
               <Divider borderColor="whiteAlpha.300" my="2" />
@@ -92,12 +117,22 @@ function AdminLayout() {
                   SUPERADMIN
                 </Text>
               )}
-              <NavItem
-                to="/admin/companies"
-                icon={MdDomain}
-                label="Companies"
-                sidebarOpen={sidebarOpen}
-              />
+              <NavItem to="/admin/companies"                icon={MdDomain}         label="Companies"     sidebarOpen={sidebarOpen} />
+              <NavItem to="/admin/subscriptions"           icon={MdCardMembership} label="Subscriptions" sidebarOpen={sidebarOpen} />
+              <NavItem to="/admin/subscription/audit-log"  icon={MdHistory}        label="Audit Logs"    sidebarOpen={sidebarOpen} />
+            </>
+          )}
+
+          {/* ── SUBSCRIPTION section (Owner only) ─────────────────────────── */}
+          {!isSuperAdmin && (isOwner || isAdmin) && (
+            <>
+              <Divider borderColor="whiteAlpha.300" my="2" />
+              {sidebarOpen && (
+                <Text fontSize="xs" fontWeight="bold" color="whiteAlpha.500" ml="2" mb="1">
+                  SUBSCRIPTION
+                </Text>
+              )}
+              <NavItem to="/admin/subscription/current"   icon={MdCreditCard}  label="My Plan"       sidebarOpen={sidebarOpen} />
             </>
           )}
 
@@ -173,7 +208,6 @@ function AdminLayout() {
           px="6" align="center" justify="space-between" boxShadow="sm"
         >
           <HStack spacing={4}>
-            {/* SuperAdmin: company filter dropdown */}
             {isSuperAdmin ? (
               <HStack spacing={3}>
                 <Badge colorScheme="yellow" fontSize="xs" px="2" py="1" borderRadius="md">
@@ -194,7 +228,6 @@ function AdminLayout() {
                 </Select>
               </HStack>
             ) : (
-              /* Normal user: project dropdown */
               projects?.length > 0 ? (
                 <Select
                   size="sm" w="250px" variant="filled" borderRadius="md"
@@ -233,7 +266,6 @@ function AdminLayout() {
                 <MenuItem icon={<MdPerson size={18}/>} onClick={() => navigate("/admin/profile")}>
                   My Profile
                 </MenuItem>
-                {/* Hide company-specific options for superadmin */}
                 {!isSuperAdmin && (
                   <>
                     <MenuItem icon={<MdBusiness size={18}/>} onClick={() => navigate("/admin/company-profile")}>
@@ -242,6 +274,11 @@ function AdminLayout() {
                     {(isAdmin || isOwner) && (
                       <MenuItem icon={<MdSettings size={18}/>} onClick={() => navigate("/admin/company-settings")}>
                         Company Settings
+                      </MenuItem>
+                    )}
+                    {(isAdmin || isOwner) && (
+                      <MenuItem icon={<MdCreditCard size={18}/>} onClick={() => navigate("/admin/subscription/current")}>
+                        My Subscription
                       </MenuItem>
                     )}
                   </>

@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useEffect } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 
 import Login from "./pages/Login";
@@ -34,7 +34,14 @@ import DocumentViewer from "./pages/documents/DocumentViewer";
 import GoPage from "./pages/GoPage";
 import CompanyProfile from "./pages/Company/Companyprofile";
 import CompanySettings from "./pages/Company/Companysettings";
-import SuperAdminCompanies from "./pages/Superadmincompanies"; // ← NEW
+import SuperAdminCompanies from "./pages/Superadmincompanies";
+
+// ── Subscription pages ────────────────────────────────────────────────────────
+import PricingPage           from "./pages/subscription/PricingPage";
+import SubscriptionPage      from "./pages/subscription/SubscriptionPage";
+import SubscriptionExpired   from "./pages/subscription/SubscriptionExpired";
+import AuditLogPage          from "./pages/subscription/AuditLogPage";
+import SuperAdminSubscriptions from "./pages/SuperAdminSubscriptions";
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -62,13 +69,34 @@ function PublicRoute({ children }) {
   return children;
 }
 
+// ── Intercepts SUBSCRIPTION_EXPIRED API responses and redirects ───────────────
+function SubscriptionGuard({ children }) {
+  const navigate  = useNavigate();
+  const location  = useLocation();
+  const { user, isSuperAdmin } = useAuth();
+
+  // Only guard non-superadmin users, and don't redirect if already on expired page
+  const isExpiredPage = location.pathname === "/admin/subscription/expired";
+
+  useEffect(() => {
+    if (!user || isSuperAdmin || isExpiredPage) return;
+
+    // Listen for SUBSCRIPTION_EXPIRED responses globally
+    const originalFetch = window._originalFetch;
+    // We handle this via axios interceptor in api.js instead
+    // See: add interceptor in your api.js file
+  }, [user, isSuperAdmin, isExpiredPage, navigate]);
+
+  return children;
+}
+
 function App() {
   return (
     <BrowserRouter>
       <Routes>
         {/* ── Public routes ── */}
-        <Route path="/"      element={<PublicRoute><Login /></PublicRoute>} />
-        <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
+        <Route path="/"       element={<PublicRoute><Login /></PublicRoute>} />
+        <Route path="/login"  element={<PublicRoute><Login /></PublicRoute>} />
         <Route path="/signup" element={<PublicRoute><Signup /></PublicRoute>} />
 
         {/* ── Protected admin routes ── */}
@@ -80,7 +108,16 @@ function App() {
           <Route path="profile" element={<AdminProfile />} />
 
           {/* SuperAdmin only */}
-          <Route path="companies" element={<SuperAdminCompanies />} />  {/* ← NEW */}
+          <Route path="companies"      element={<SuperAdminCompanies />} />
+          <Route path="subscriptions"  element={<SuperAdminSubscriptions />} />
+
+          {/* ── Subscription routes ── */}
+          <Route path="subscription">
+            <Route path="pricing"  element={<PricingPage />} />
+            <Route path="current"  element={<SubscriptionPage />} />
+            <Route path="expired"  element={<SubscriptionExpired />} />
+            <Route path="audit-log" element={<AuditLogPage />} />
+          </Route>
 
           <Route path="staff">
             <Route index element={<StaffPage />} />
@@ -116,21 +153,21 @@ function App() {
             <Route path=":id/detail" element={<ProjectDetail />} />
           </Route>
 
-          <Route path="team" element={<TeamPage />} />
-          <Route path="company-profile" element={<CompanyProfile />} />
-          <Route path="company-settings" element={<CompanySettings />} />
-          <Route path="issues" element={<IssuesPage />} />
+          <Route path="team"              element={<TeamPage />} />
+          <Route path="company-profile"   element={<CompanyProfile />} />
+          <Route path="company-settings"  element={<CompanySettings />} />
+          <Route path="issues"            element={<IssuesPage />} />
 
           <Route path="documents">
             <Route index element={<DocumentsPage />} />
-            <Route path="editor" element={<DocumentEditor />} />
+            <Route path="editor"     element={<DocumentEditor />} />
             <Route path="editor/:id" element={<DocumentEditor />} />
-            <Route path="view/:id" element={<DocumentViewer />} />
+            <Route path="view/:id"   element={<DocumentViewer />} />
           </Route>
         </Route>
 
-        <Route path="/go" element={<GoPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="/go"  element={<GoPage />} />
+        <Route path="*"    element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );

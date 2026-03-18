@@ -1,33 +1,26 @@
 import { useEffect, useState, useMemo } from "react";
 import {
   Box, Flex, Heading, Text, Spinner, SimpleGrid,
-  Badge, Avatar, VStack, HStack, useColorModeValue, 
-  Button, Icon, Progress, Divider, AvatarGroup, 
+  Badge, Avatar, VStack, HStack, useColorModeValue,
+  Button, Icon, Progress, Divider, AvatarGroup,
   Square, Grid, GridItem
 } from "@chakra-ui/react";
 import { useAuth } from "../context/AuthContext";
 import api from "../api";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
-  ResponsiveContainer, BarChart, Bar, Cell,
+  ResponsiveContainer,
 } from "recharts";
-import { 
-  MdOutlineRocketLaunch, MdOutlinePeople, MdOutlineDataUsage,
+import {
+  MdOutlineRocketLaunch, MdOutlineDataUsage,
   MdOutlineCheckCircle, MdOutlineTimer, MdOutlineLayers
 } from "react-icons/md";
 import { useNavigate } from "react-router-dom";
 
-const STATUS_COLORS = {
-  completed: "#10b981",
-  inprogress: "#3b82f6",
-  pending: "#f59e0b",
-  default: "#94a3b8"
-};
-
 export default function Dashboard() {
   const { user, selectedProject, isSuperAdmin, selectedCompany } = useAuth();
   const navigate = useNavigate();
-  const [data, setData] = useState({ tasks: [], staff: [], docs: [] });
+  const [data,    setData]    = useState({ tasks: [], staff: [], docs: [] });
   const [loading, setLoading] = useState(true);
 
   const bg      = useColorModeValue("gray.50",  "gray.900");
@@ -39,17 +32,36 @@ export default function Dashboard() {
     const fetchData = async () => {
       setLoading(true);
       try {
-        // SuperAdmin: optionally filter by selectedCompany
-        const params = isSuperAdmin && selectedCompany
-          ? { params: { companyId: selectedCompany._id } }
-          : {};
+        if (isSuperAdmin) {
+          // SuperAdmin uses /tasks/super/all which works without companyId
+          const t = Date.now();
+          const url = selectedCompany
+            ? `/tasks/super/all?company=${selectedCompany._id}&_t=${t}`
+            : `/tasks/super/all?_t=${t}`;
 
-        const [s, t, d] = await Promise.all([
-          api.get("/staff",     params),
-          api.get("/tasks",     params),
-          api.get("/documents", params).catch(() => ({ data: [] })),
-        ]);
-        setData({ staff: s.data, tasks: t.data, docs: d.data });
+          const [tRes, sRes] = await Promise.all([
+            api.get(url),
+            api.get(`/staff?_t=${t}`),
+          ]);
+
+          // super/all returns { grouped: [{company, tasks}], total }
+          const allTasks = (tRes.data?.grouped || []).flatMap(g => g.tasks);
+          const allStaff = selectedCompany
+            ? (sRes.data || []).filter(s =>
+                String(s.company?._id || s.company) === String(selectedCompany._id)
+              )
+            : (sRes.data || []);
+
+          setData({ tasks: allTasks, staff: allStaff, docs: [] });
+        } else {
+          // Normal user — original behavior
+          const [s, t, d] = await Promise.all([
+            api.get("/staff"),
+            api.get("/tasks"),
+            api.get("/documents").catch(() => ({ data: [] })),
+          ]);
+          setData({ staff: s.data || [], tasks: t.data || [], docs: d.data || [] });
+        }
       } catch (err) {
         console.error("Dashboard fetch error:", err);
         setData({ tasks: [], staff: [], docs: [] });
@@ -60,11 +72,9 @@ export default function Dashboard() {
     fetchData();
   }, [isSuperAdmin, selectedCompany]);
 
-  // ── Live Filtering Logic ────────────────────────────────────────────────
   const activeTasks = useMemo(() => {
     const projId = typeof selectedProject === "string"
-      ? selectedProject
-      : selectedProject?._id;
+      ? selectedProject : selectedProject?._id;
     return projId
       ? data.tasks.filter(t => (t.project?._id || t.project) === projId)
       : data.tasks;
@@ -72,12 +82,15 @@ export default function Dashboard() {
 
   const analytics = useMemo(() => {
     const total = activeTasks.length;
-    const done  = activeTasks.filter(t => t.taskStatus?.name?.toLowerCase().includes("complet")).length;
-    const prog  = activeTasks.filter(t => t.taskStatus?.name?.toLowerCase().includes("progress")).length;
+    const done  = activeTasks.filter(t =>
+      t.taskStatus?.name?.toLowerCase().includes("complet") ||
+      t.taskStatus?.name?.toLowerCase().includes("done")
+    ).length;
+    const prog = activeTasks.filter(t =>
+      t.taskStatus?.name?.toLowerCase().includes("progress")
+    ).length;
     return {
-      total,
-      done,
-      prog,
+      total, done, prog,
       rate:     total ? Math.round((done / total) * 100) : 0,
       velocity: prog + done > 0 ? "High" : "Stable",
     };
@@ -91,7 +104,7 @@ export default function Dashboard() {
 
   return (
     <Box maxW="1400px" mx="auto" p={1}>
-      {/* ── HEADER ── */}
+      {/* Header */}
       <Flex justify="space-between" align="center" mb={8}>
         <VStack align="start" spacing={0}>
           <HStack>
@@ -114,32 +127,35 @@ export default function Dashboard() {
 
         <HStack spacing={3}>
           <AvatarGroup size="sm" max={4}>
-            {data.staff.map(s => <Avatar key={s._id} name={s.name} />)}
+            {data.staff.slice(0, 4).map(s => <Avatar key={s._id} name={s.name} />)}
           </AvatarGroup>
           <Divider orientation="vertical" h="30px" />
           {!isSuperAdmin && (
-            <Button colorScheme="purple" size="sm" leftIcon={<MdOutlineRocketLaunch />}>
+            <Button colorScheme="purple" size="sm" leftIcon={<MdOutlineRocketLaunch />}
+              onClick={() => navigate("/admin/tasks/create")}>
               New Task
             </Button>
           )}
         </HStack>
       </Flex>
 
-      {/* ── TOP METRICS ── */}
+      {/* Metrics */}
       <SimpleGrid columns={{ base: 1, md: 4 }} spacing={6} mb={10}>
-        <MetricCard icon={MdOutlineLayers}      label="Active Tasks"  value={analytics.total}      color="blue.500"   />
-        <MetricCard icon={MdOutlineCheckCircle} label="Completed"     value={analytics.done}       color="green.500"  />
-        <MetricCard icon={MdOutlineTimer}       label="In Progress"   value={analytics.prog}       color="orange.500" />
-        <MetricCard icon={MdOutlineDataUsage}   label="Success Rate"  value={`${analytics.rate}%`} color="purple.500" />
+        <MetricCard icon={MdOutlineLayers}      label="Active Tasks" value={analytics.total}      color="blue.500"   />
+        <MetricCard icon={MdOutlineCheckCircle} label="Completed"    value={analytics.done}       color="green.500"  />
+        <MetricCard icon={MdOutlineTimer}       label="In Progress"  value={analytics.prog}       color="orange.500" />
+        <MetricCard icon={MdOutlineDataUsage}   label="Success Rate" value={`${analytics.rate}%`} color="purple.500" />
       </SimpleGrid>
 
       <Grid templateColumns={{ base: "1fr", lg: "repeat(3, 1fr)" }} gap={6}>
-        {/* ── TREND CHART ── */}
+        {/* Trend Chart */}
         <GridItem colSpan={{ base: 1, lg: 2 }}>
           <Box bg={cardBg} p={6} borderRadius="2xl" border="1px solid" borderColor={border} boxShadow="sm">
             <Flex justify="space-between" mb={6}>
               <Text fontWeight="bold">Task Completion Trend</Text>
-              <SelectTransparent />
+              <Badge variant="outline" colorScheme="gray" px={3} py={1} borderRadius="lg">
+                Last 7 Days
+              </Badge>
             </Flex>
             <Box h="320px">
               <ResponsiveContainer width="100%" height="100%">
@@ -163,7 +179,7 @@ export default function Dashboard() {
           </Box>
         </GridItem>
 
-        {/* ── PROJECT HEALTH ── */}
+        {/* Progress */}
         <GridItem colSpan={1}>
           <Box bg={cardBg} p={6} borderRadius="2xl" border="1px solid" borderColor={border} h="full">
             <Text fontWeight="bold" mb={6}>Overall Progress</Text>
@@ -172,36 +188,28 @@ export default function Dashboard() {
                 <Text fontSize="5xl" fontWeight="900" color="purple.500">{analytics.rate}%</Text>
                 <Text fontSize="sm" color={subText}>Completed</Text>
                 <Box w="160px" mt={3}>
-                  <Progress
-                    value={analytics.rate}
-                    size="lg"
-                    colorScheme="purple"
-                    borderRadius="full"
-                    bg={border}
-                  />
+                  <Progress value={analytics.rate} size="lg" colorScheme="purple"
+                    borderRadius="full" bg={border} />
                 </Box>
               </VStack>
             </Flex>
             <VStack mt={6} align="stretch" spacing={3}>
-              <HealthRow label="Team Velocity"  value={analytics.velocity} color="green" />
-              <HealthRow label="Total Staff"    value={data.staff.length}  color="blue"  />
-              <HealthRow label="Documentation"  value={data.docs.length}   color="gray"  />
+              <HealthRow label="Team Velocity" value={analytics.velocity} color="green" />
+              <HealthRow label="Total Staff"   value={data.staff.length}  color="blue"  />
+              <HealthRow label="Total Docs"    value={data.docs.length}   color="gray"  />
             </VStack>
           </Box>
         </GridItem>
 
-        {/* ── RECENT TASKS TABLE ── */}
+        {/* Recent Tasks */}
         <GridItem colSpan={{ base: 1, lg: 3 }}>
           <Box bg={cardBg} borderRadius="2xl" border="1px solid" borderColor={border} overflow="hidden">
             <Box p={5} borderBottom="1px solid" borderColor={border}>
               <HStack justify="space-between">
                 <Text fontWeight="bold">Recent Live Tasks</Text>
-                <Badge colorScheme="purple" variant="subtle">
-                  {activeTasks.length} total
-                </Badge>
+                <Badge colorScheme="purple" variant="subtle">{activeTasks.length} total</Badge>
               </HStack>
             </Box>
-
             {activeTasks.length === 0 ? (
               <Flex align="center" justify="center" h="120px">
                 <Text color={subText} fontSize="sm">
@@ -214,30 +222,24 @@ export default function Dashboard() {
               <Box overflowX="auto">
                 <VStack align="stretch" spacing={0} p={2}>
                   {activeTasks.slice(0, 5).map((task) => (
-                    <Flex
-                      key={task._id} align="center" p={4} borderRadius="xl"
-                      _hover={{ bg: bg }} transition="0.2s"
-                    >
-                      <Square size="40px" bg="purple.50" borderRadius="lg"
-                        color="purple.600" mr={4}>
+                    <Flex key={task._id} align="center" p={4} borderRadius="xl"
+                      _hover={{ bg: bg }} transition="0.2s">
+                      <Square size="40px" bg="purple.50" borderRadius="lg" color="purple.600" mr={4}>
                         <MdOutlineRocketLaunch />
                       </Square>
                       <VStack align="start" spacing={0} flex={1}>
                         <Text fontWeight="bold" fontSize="sm">{task.name}</Text>
-                        <Text fontSize="xs" color={subText}>
-                          {task.project?.name || "No Project"}
-                        </Text>
+                        <Text fontSize="xs" color={subText}>{task.project?.name || "No Project"}</Text>
                       </VStack>
                       <HStack spacing={8}>
                         <Avatar size="xs" name={task.assignee?.name} />
-                        <Badge
-                          variant="subtle"
+                        <Badge variant="subtle"
                           colorScheme={
-                            task.taskStatus?.name?.toLowerCase().includes("complet")
+                            task.taskStatus?.name?.toLowerCase().includes("complet") ||
+                            task.taskStatus?.name?.toLowerCase().includes("done")
                               ? "green" : "blue"
-                          }
-                        >
-                          {task.taskStatus?.name}
+                          }>
+                          {task.taskStatus?.name || "—"}
                         </Badge>
                         <Text fontSize="xs" color={subText}>
                           {new Date(task.createdAt).toLocaleDateString()}
@@ -255,8 +257,6 @@ export default function Dashboard() {
   );
 }
 
-// ── SUB-COMPONENTS ────────────────────────────────────────────────────────────
-
 function MetricCard({ icon, label, value, color }) {
   const cardBg = useColorModeValue("white", "gray.800");
   const border = useColorModeValue("gray.100", "gray.700");
@@ -268,9 +268,7 @@ function MetricCard({ icon, label, value, color }) {
       </Square>
       <VStack align="start" spacing={0}>
         <Text fontSize="2xl" fontWeight="900" lineHeight="1">{value}</Text>
-        <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase">
-          {label}
-        </Text>
+        <Text fontSize="xs" fontWeight="bold" color="gray.500" textTransform="uppercase">{label}</Text>
       </VStack>
     </HStack>
   );
@@ -296,12 +294,6 @@ const CustomTooltip = ({ active, payload }) => {
   }
   return null;
 };
-
-const SelectTransparent = () => (
-  <Badge variant="outline" colorScheme="gray" textTransform="none" px={3} py={1} borderRadius="lg">
-    Last 7 Days
-  </Badge>
-);
 
 const getMockTrendData = () => [
   { name: "Mon", completed: 4  },
