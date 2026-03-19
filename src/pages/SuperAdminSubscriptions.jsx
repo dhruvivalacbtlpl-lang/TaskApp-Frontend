@@ -8,7 +8,7 @@ import {
   ModalHeader, ModalBody, ModalFooter, ModalCloseButton,
   AlertDialog, AlertDialogOverlay, AlertDialogContent,
   AlertDialogHeader, AlertDialogBody, AlertDialogFooter,
-  Flex, Icon, Tooltip, Switch, NumberInput, NumberInputField,
+  Flex, Icon, Tooltip, Switch, NumberInput, NumberInputField, Checkbox,
   Tabs, TabList, TabPanels, Tab, TabPanel,
 } from "@chakra-ui/react";
 import {
@@ -74,264 +74,357 @@ const PLAN_COLORS = [
 // PLAN FORM MODAL — Create / Edit a plan
 // ═══════════════════════════════════════════════════════════════════════════════
 function PlanModal({ plan, onClose, onSaved }) {
-  const toast  = useToast();
-  const isEdit = !!plan;
+  const toast   = useToast();
+  const isEdit  = !!plan;
   const isBuiltIn = isEdit && ["free","basic","pro"].includes(plan.name);
   const [saving, setSaving] = useState(false);
 
-  const [form, setForm] = useState({
-    name:        plan?.name        || "",
-    displayName: plan?.displayName || "",
-    description: plan?.description || "",
-    color:       plan?.color       || "#3b82f6",
-    pricing: {
-      monthly:    plan?.pricing?.monthly    ?? 0,
-      quarterly:  plan?.pricing?.quarterly  ?? 0,
-      halfYearly: plan?.pricing?.halfYearly ?? 0,
-      yearly:     plan?.pricing?.yearly     ?? 0,
-    },
-    limits: {
-      staff:        plan?.limits?.staff        ?? 3,
-      projects:     plan?.limits?.projects     ?? 2,
-      teamMembers:  plan?.limits?.teamMembers  ?? 1,
-      tasks:        plan?.limits?.tasks        ?? 20,
-      issues:       plan?.limits?.issues       ?? 20,
-      documents:    plan?.limits?.documents    ?? 5,
-      taskStatuses: plan?.limits?.taskStatuses ?? 3,
-      bulkUpload:   plan?.limits?.bulkUpload   ?? 0,
-      devices:      plan?.limits?.devices      ?? 1,
-    },
-    features: {
-      notifications:   plan?.features?.notifications   ?? false,
-      bulkUpload:      plan?.features?.bulkUpload      ?? false,
-      prioritySupport: plan?.features?.prioritySupport ?? false,
-    },
+  // All available features/limits pool
+  const ALL_FEATURES = [
+    { key: "staff",           label: "Staff Members",      type: "limit"   },
+    { key: "projects",        label: "Projects",           type: "limit"   },
+    { key: "teamMembers",     label: "Team Members",       type: "limit"   },
+    { key: "tasks",           label: "Tasks",              type: "limit"   },
+    { key: "issues",          label: "Issues",             type: "limit"   },
+    { key: "documents",       label: "Documents",          type: "limit"   },
+    { key: "taskStatuses",    label: "Task Statuses",      type: "limit"   },
+    { key: "bulkUpload",      label: "Bulk Upload Rows",   type: "limit"   },
+    { key: "devices",         label: "Devices",            type: "limit"   },
+    { key: "notifications",   label: "Notifications",      type: "feature" },
+    { key: "bulkUploadFlag",  label: "Bulk Upload Access", type: "feature" },
+    { key: "prioritySupport", label: "Priority Support",   type: "feature" },
+  ];
+
+  // Basic plan info
+  const [name,        setName]        = useState(plan?.name        || "");
+  const [displayName, setDisplayName] = useState(plan?.displayName || "");
+  const [description, setDescription] = useState(plan?.description || "");
+  const [color,       setColor]       = useState(plan?.color       || "#8b5cf6");
+
+  // Duration pricing — array of { cycle, price }
+  const [durations, setDurations] = useState(() => {
+    const cycles = ["monthly","quarterly","halfYearly","yearly"];
+    return cycles
+      .filter(c => plan?.pricing?.[c] !== undefined)
+      .map(c => ({ cycle: c, price: plan?.pricing?.[c] ?? 0 }));
   });
+
+  // Selected features — array of { key, label, type, value }
+  // value = number for limit, boolean for feature
+  const [selectedFeatures, setSelectedFeatures] = useState(() => {
+    if (!plan) return [];
+    const result = [];
+    Object.entries(plan.limits || {}).forEach(([key, val]) => {
+      const f = ALL_FEATURES.find(x => x.key === key && x.type === "limit");
+      if (f) result.push({ ...f, value: val });
+    });
+    Object.entries(plan.features || {}).forEach(([key, val]) => {
+      const fKey = key === "bulkUpload" ? "bulkUploadFlag" : key;
+      const f = ALL_FEATURES.find(x => x.key === fKey && x.type === "feature");
+      if (f) result.push({ ...f, value: val });
+    });
+    return result;
+  });
+
+  const [selectedDuration, setSelectedDuration] = useState("");
+  const [selectedFeatureKey, setSelectedFeatureKey] = useState("");
 
   const inputBg = useColorModeValue("gray.50", "gray.700");
   const subText = useColorModeValue("gray.500", "gray.400");
   const border  = useColorModeValue("gray.200", "gray.600");
-  const cardBg  = useColorModeValue("gray.50",  "gray.700");
+  const rowBg   = useColorModeValue("gray.50",  "gray.700");
+  const cardBg  = useColorModeValue("white",    "gray.750");
 
-  const setPrice   = (k) => (v) => setForm(p => ({ ...p, pricing: { ...p.pricing, [k]: Number(v) } }));
-  const setLimit   = (k) => (v) => setForm(p => ({ ...p, limits:  { ...p.limits,  [k]: Number(v) } }));
-  const setFeature = (k) => (e) => setForm(p => ({ ...p, features:{ ...p.features,[k]: e.target.checked } }));
+  // Features not yet selected
+  const availableFeatures = ALL_FEATURES.filter(
+    f => !selectedFeatures.find(s => s.key === f.key)
+  );
+
+  // Durations not yet added
+  const CYCLE_LABELS = {
+    monthly: "Monthly", quarterly: "3 Months",
+    halfYearly: "6 Months", yearly: "Yearly",
+  };
+  const availableDurations = Object.keys(CYCLE_LABELS).filter(
+    c => !durations.find(d => d.cycle === c)
+  );
+
+  // Add duration
+  const addDuration = () => {
+    if (!selectedDuration) return;
+    setDurations(p => [...p, { cycle: selectedDuration, price: 0 }]);
+    setSelectedDuration("");
+  };
+
+  // Remove duration
+  const removeDuration = (cycle) =>
+    setDurations(p => p.filter(d => d.cycle !== cycle));
+
+  // Update duration price
+  const setDurationPrice = (cycle, price) =>
+    setDurations(p => p.map(d => d.cycle === cycle ? { ...d, price: Number(price) } : d));
+
+  // Add feature
+  const addFeature = () => {
+    if (!selectedFeatureKey) return;
+    const f = ALL_FEATURES.find(x => x.key === selectedFeatureKey);
+    if (!f) return;
+    setSelectedFeatures(p => [...p, { ...f, value: f.type === "limit" ? 10 : false }]);
+    setSelectedFeatureKey("");
+  };
+
+  // Remove feature — goes back to dropdown
+  const removeFeature = (key) =>
+    setSelectedFeatures(p => p.filter(f => f.key !== key));
+
+  // Update feature value
+  const setFeatureValue = (key, val) =>
+    setSelectedFeatures(p => p.map(f => f.key === key ? { ...f, value: val } : f));
 
   const save = async () => {
-    if (!form.name.trim() || !form.displayName.trim()) {
-      toast({ title: "Name and Display Name are required", status: "warning", duration: 3000 });
+    if (!name.trim() || !displayName.trim()) {
+      toast({ title: "Plan Key and Display Name are required", status: "warning", duration: 3000 });
       return;
     }
+    // Build pricing object
+    const pricing = {};
+    durations.forEach(d => { pricing[d.cycle] = d.price; });
+
+    // Build limits + features objects
+    const limits = {};
+    const features = {};
+    selectedFeatures.forEach(f => {
+      if (f.type === "limit") {
+        limits[f.key] = f.value;
+      } else {
+        const realKey = f.key === "bulkUploadFlag" ? "bulkUpload" : f.key;
+        features[realKey] = f.value;
+      }
+    });
+
     setSaving(true);
     try {
+      const payload = { name, displayName, description, color, pricing, limits, features };
       if (isEdit) {
-        await api.put(`/subscription/plans/${plan._id}`, form);
+        await api.put(`/subscription/plans/${plan._id}`, payload);
       } else {
-        await api.post("/subscription/plans", form);
+        await api.post("/subscription/plans", payload);
       }
-      toast({
-        title: isEdit ? "Plan updated!" : "Plan created!",
-        status: "success", duration: 3000,
-      });
-      onSaved();
-      onClose();
+      toast({ title: isEdit ? "Plan updated!" : "Plan created!", status: "success", duration: 3000 });
+      onSaved(); onClose();
     } catch (err) {
-      toast({
-        title: err?.response?.data?.message || "Failed to save plan",
-        status: "error", duration: 4000,
-      });
+      toast({ title: err?.response?.data?.message || "Failed to save plan", status: "error", duration: 4000 });
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <Modal isOpen onClose={onClose} size="2xl" scrollBehavior="inside">
+    <Modal isOpen onClose={onClose} size="xl" scrollBehavior="inside">
       <ModalOverlay backdropFilter="blur(4px)" />
       <ModalContent borderRadius="2xl">
         <ModalHeader borderBottomWidth="1px" pb={4}>
           <HStack spacing={2}>
-            <Box w={4} h={4} borderRadius="full" bg={form.color} />
+            <Box w={4} h={4} borderRadius="full" bg={color} />
             <Text>{isEdit ? `Edit — ${plan.displayName}` : "New Plan"}</Text>
-            {isBuiltIn && (
-              <Badge colorScheme="orange" fontSize="xs">Built-in</Badge>
-            )}
+            {isBuiltIn && <Badge colorScheme="orange" fontSize="xs">Built-in</Badge>}
           </HStack>
         </ModalHeader>
         <ModalCloseButton />
 
         <ModalBody py={5}>
-          <Tabs variant="soft-rounded" colorScheme="blue" size="sm">
-            <TabList mb={5} gap={2} flexWrap="wrap">
-              <Tab>Basic Info</Tab>
-              <Tab>Limits</Tab>
-              <Tab>Features</Tab>
-              <Tab>Pricing</Tab>
-            </TabList>
+          <VStack spacing={5} align="stretch">
 
-            <TabPanels>
-              {/* ── Basic Info ── */}
-              <TabPanel px={0}>
-                <VStack spacing={4} align="stretch">
-                  <SimpleGrid columns={2} spacing={4}>
-                    <FormControl isRequired>
-                      <FormLabel fontSize="sm">Plan Key</FormLabel>
-                      <Input value={form.name}
-                        onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
-                        bg={inputBg} borderRadius="lg" isDisabled={isBuiltIn}
-                        placeholder="e.g. enterprise" />
-                      <Text fontSize="xs" color={subText} mt={1}>
-                        Unique identifier (lowercase, no spaces)
-                      </Text>
-                    </FormControl>
-                    <FormControl isRequired>
-                      <FormLabel fontSize="sm">Display Name</FormLabel>
-                      <Input value={form.displayName}
-                        onChange={e => setForm(p => ({ ...p, displayName: e.target.value }))}
-                        bg={inputBg} borderRadius="lg"
-                        placeholder="e.g. Enterprise" />
-                    </FormControl>
-                  </SimpleGrid>
+            {/* ── Plan Name ── */}
+            <SimpleGrid columns={2} spacing={4}>
+              <FormControl isRequired>
+                <FormLabel fontSize="sm">Plan Key</FormLabel>
+                <Input value={name}
+                  onChange={e => setName(e.target.value)}
+                  bg={inputBg} borderRadius="lg"
+                  placeholder="e.g. enterprise"
+                  isDisabled={isBuiltIn} />
+                <Text fontSize="xs" color={subText} mt={1}>Lowercase, no spaces</Text>
+              </FormControl>
+              <FormControl isRequired>
+                <FormLabel fontSize="sm">Display Name</FormLabel>
+                <Input value={displayName}
+                  onChange={e => setDisplayName(e.target.value)}
+                  bg={inputBg} borderRadius="lg"
+                  placeholder="e.g. Enterprise" />
+              </FormControl>
+            </SimpleGrid>
 
-                  <FormControl>
-                    <FormLabel fontSize="sm">Description</FormLabel>
-                    <Input value={form.description}
-                      onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
-                      bg={inputBg} borderRadius="lg"
-                      placeholder="Short description shown to users" />
-                  </FormControl>
+            <FormControl>
+              <FormLabel fontSize="sm">Description</FormLabel>
+              <Input value={description}
+                onChange={e => setDescription(e.target.value)}
+                bg={inputBg} borderRadius="lg"
+                placeholder="Short plan description" />
+            </FormControl>
 
-                  {/* Color picker */}
-                  <FormControl>
-                    <FormLabel fontSize="sm">Plan Color</FormLabel>
-                    <HStack spacing={3} flexWrap="wrap">
-                      {PLAN_COLORS.map(c => (
-                        <Box key={c} w={8} h={8} borderRadius="full" bg={c}
-                          cursor="pointer"
-                          border="3px solid"
-                          borderColor={form.color === c ? "white" : "transparent"}
-                          boxShadow={form.color === c ? `0 0 0 3px ${c}` : "none"}
-                          onClick={() => setForm(p => ({ ...p, color: c }))}
-                          transition="0.15s"
-                        />
-                      ))}
-                      <Input type="color" value={form.color} w={8} h={8} p={0}
-                        border="none" borderRadius="full" cursor="pointer"
-                        onChange={e => setForm(p => ({ ...p, color: e.target.value }))} />
-                    </HStack>
-                  </FormControl>
+            {/* ── Color ── */}
+            <FormControl>
+              <FormLabel fontSize="sm">Plan Color</FormLabel>
+              <HStack spacing={3} flexWrap="wrap">
+                {["#6b7280","#3b82f6","#8b5cf6","#10b981","#f59e0b","#ef4444","#ec4899","#14b8a6"].map(c => (
+                  <Box key={c} w={7} h={7} borderRadius="full" bg={c} cursor="pointer"
+                    border="3px solid"
+                    borderColor={color === c ? "white" : "transparent"}
+                    boxShadow={color === c ? `0 0 0 3px ${c}` : "none"}
+                    onClick={() => setColor(c)} transition="0.15s" />
+                ))}
+                <Input type="color" value={color} w={8} h={8} p={0}
+                  border="none" borderRadius="full" cursor="pointer"
+                  onChange={e => setColor(e.target.value)} />
+              </HStack>
+            </FormControl>
 
-                  {/* Preview badge */}
-                  <Box p={4} bg={cardBg} borderRadius="xl"
-                    border="1px solid" borderColor={border}>
-                    <Text fontSize="xs" color={subText} mb={2}>Preview</Text>
-                    <HStack>
-                      <Badge
-                        px={3} py={1} borderRadius="full" fontSize="sm" fontWeight="700"
-                        style={{
-                          background: form.color + "22",
-                          color: form.color,
-                          border: `1px solid ${form.color}44`,
-                        }}
-                      >
-                        {form.displayName || "Plan Name"}
-                      </Badge>
-                      <Text fontSize="sm" color={subText}>{form.description || "Description"}</Text>
-                    </HStack>
-                  </Box>
-                </VStack>
-              </TabPanel>
+            <Divider />
 
-              {/* ── Limits ── */}
-              <TabPanel px={0}>
-                <Text fontSize="xs" color={subText} mb={4}>
-                  Set <strong>-1</strong> for unlimited · <strong>0</strong> to disable the feature
-                </Text>
-                <SimpleGrid columns={2} spacing={4}>
-                  {LIMIT_FIELDS.map(({ key, label }) => (
-                    <FormControl key={key}>
-                      <FormLabel fontSize="sm">{label}</FormLabel>
-                      <HStack spacing={2}>
-                        <NumberInput value={form.limits[key]} min={-1}
-                          onChange={setLimit(key)} size="sm" flex={1}>
-                          <NumberInputField bg={inputBg} borderRadius="lg" />
-                        </NumberInput>
-                        <Badge
-                          colorScheme={
-                            form.limits[key] === -1 ? "green" :
-                            form.limits[key] === 0  ? "red"   : "blue"
-                          }
-                          fontSize="9px" px={2} borderRadius="full" flexShrink={0}>
-                          {form.limits[key] === -1 ? "∞" :
-                           form.limits[key] === 0  ? "OFF" : form.limits[key]}
-                        </Badge>
-                      </HStack>
-                    </FormControl>
+            {/* ── Duration ── */}
+            <Box>
+              <FormLabel fontSize="sm" fontWeight="700" mb={3}>
+                Billing Durations & Prices
+              </FormLabel>
+
+              {/* Add duration */}
+              <HStack mb={3}>
+                <Select
+                  placeholder="Add billing duration…"
+                  value={selectedDuration}
+                  onChange={e => setSelectedDuration(e.target.value)}
+                  bg={inputBg} borderRadius="lg" size="sm" flex={1}
+                >
+                  {availableDurations.map(c => (
+                    <option key={c} value={c}>{CYCLE_LABELS[c]}</option>
                   ))}
-                </SimpleGrid>
-              </TabPanel>
+                </Select>
+                <Button size="sm" colorScheme="purple" onClick={addDuration}
+                  isDisabled={!selectedDuration} borderRadius="lg">
+                  Add
+                </Button>
+              </HStack>
 
-              {/* ── Features ── */}
-              <TabPanel px={0}>
-                <VStack spacing={3} align="stretch">
-                  {FEATURE_FIELDS.map(({ key, label }) => (
-                    <HStack key={key} justify="space-between" p={4}
-                      borderRadius="xl" border="1px solid"
-                      borderColor={form.features[key] ? "blue.200" : border}
-                      bg={form.features[key]
-                        ? useColorModeValue("blue.50","blue.900")
-                        : useColorModeValue("gray.50","gray.700")}>
-                      <VStack align="start" spacing={0}>
-                        <Text fontWeight="600" fontSize="sm">{label}</Text>
-                        <Text fontSize="xs" color={subText}>
-                          {key === "notifications"   && "Allow real-time push notifications"}
-                          {key === "bulkUpload"       && "Upload tasks via Excel file"}
-                          {key === "prioritySupport"  && "Priority email & chat support"}
-                        </Text>
-                      </VStack>
-                      <Switch
-                        isChecked={form.features[key]}
-                        onChange={setFeature(key)}
-                        colorScheme="blue"
+              {/* Duration rows */}
+              <VStack spacing={2} align="stretch">
+                {durations.map(d => (
+                  <HStack key={d.cycle} p={3} bg={rowBg} borderRadius="xl"
+                    border="1px solid" borderColor={border}>
+                    <Badge colorScheme="purple" px={3} py={1} borderRadius="full"
+                      fontSize="xs" fontWeight="700" w="100px" textAlign="center">
+                      {CYCLE_LABELS[d.cycle]}
+                    </Badge>
+                    <HStack flex={1} spacing={1}>
+                      <Text fontSize="sm" color={subText}>$</Text>
+                      <Input
+                        type="number" min={0} value={d.price}
+                        onChange={e => setDurationPrice(d.cycle, e.target.value)}
+                        bg={inputBg} borderRadius="lg" size="sm"
                       />
                     </HStack>
-                  ))}
-                </VStack>
-              </TabPanel>
+                    <IconButton size="xs" icon={<MdDelete size={13}/>}
+                      colorScheme="red" variant="ghost" aria-label="Remove"
+                      onClick={() => removeDuration(d.cycle)} />
+                  </HStack>
+                ))}
+                {durations.length === 0 && (
+                  <Text fontSize="xs" color={subText} textAlign="center" py={2}>
+                    No durations added yet — add at least one above
+                  </Text>
+                )}
+              </VStack>
+            </Box>
 
-              {/* ── Pricing ── */}
-              <TabPanel px={0}>
-                <Text fontSize="xs" color={subText} mb={4}>
-                  Set price in USD for each billing cycle. Set <strong>0</strong> for free.
-                </Text>
-                <SimpleGrid columns={2} spacing={4}>
-                  {BILLING_CYCLES.map(({ value, label }) => (
-                    <FormControl key={value}>
-                      <FormLabel fontSize="sm">{label}</FormLabel>
+            <Divider />
+
+            {/* ── Features / Limits ── */}
+            <Box>
+              <FormLabel fontSize="sm" fontWeight="700" mb={3}>
+                Features & Limits
+              </FormLabel>
+
+              {/* Add feature dropdown */}
+              <HStack mb={3}>
+                <Select
+                  placeholder="Add a feature or limit…"
+                  value={selectedFeatureKey}
+                  onChange={e => setSelectedFeatureKey(e.target.value)}
+                  bg={inputBg} borderRadius="lg" size="sm" flex={1}
+                >
+                  {availableFeatures.length === 0 ? (
+                    <option disabled>All features added</option>
+                  ) : (
+                    availableFeatures.map(f => (
+                      <option key={f.key} value={f.key}>
+                        {f.label} ({f.type === "limit" ? "Limit" : "Feature"})
+                      </option>
+                    ))
+                  )}
+                </Select>
+                <Button size="sm" colorScheme="purple" onClick={addFeature}
+                  isDisabled={!selectedFeatureKey} borderRadius="lg">
+                  Add
+                </Button>
+              </HStack>
+
+              {/* Selected features as rows */}
+              <VStack spacing={2} align="stretch">
+                {selectedFeatures.map(f => (
+                  <HStack key={f.key} p={3} bg={rowBg} borderRadius="xl"
+                    border="1px solid" borderColor={border} spacing={3}>
+                    <Text fontSize="sm" fontWeight="600" flex={1}>{f.label}</Text>
+
+                    {f.type === "limit" ? (
+                      // Limit — number input with -1/unlimited toggle
                       <HStack spacing={2}>
-                        <Text fontSize="sm" color={subText}>$</Text>
-                        <NumberInput value={form.pricing[value]} min={0}
-                          onChange={setPrice(value)} size="sm" flex={1}>
-                          <NumberInputField bg={inputBg} borderRadius="lg" />
-                        </NumberInput>
+                        <Input
+                          type="number" min={-1} value={f.value}
+                          onChange={e => setFeatureValue(f.key, Number(e.target.value))}
+                          bg={inputBg} borderRadius="lg" size="sm" w="80px"
+                        />
+                        <Badge
+                          colorScheme={f.value === -1 ? "green" : f.value === 0 ? "red" : "blue"}
+                          fontSize="9px" px={2} borderRadius="full" cursor="pointer"
+                          onClick={() => setFeatureValue(f.key, f.value === -1 ? 10 : -1)}
+                          title="Click to toggle unlimited"
+                        >
+                          {f.value === -1 ? "∞ Unlimited" : f.value === 0 ? "OFF" : f.value}
+                        </Badge>
                       </HStack>
-                      {form.pricing.monthly > 0 && value !== "monthly" && (
-                        <Text fontSize="xs" color="green.500" mt={1}>
-                          Save ${Math.round(form.pricing.monthly * (value === "quarterly" ? 3 :
-                            value === "halfYearly" ? 6 : 12) - form.pricing[value])} vs monthly
+                    ) : (
+                      // Feature flag — checkbox
+                      <Checkbox
+                        isChecked={!!f.value}
+                        onChange={e => setFeatureValue(f.key, e.target.checked)}
+                        colorScheme="purple"
+                        size="lg"
+                      >
+                        <Text fontSize="xs" color={subText}>
+                          {f.value ? "Enabled" : "Disabled"}
                         </Text>
-                      )}
-                    </FormControl>
-                  ))}
-                </SimpleGrid>
-              </TabPanel>
-            </TabPanels>
-          </Tabs>
+                      </Checkbox>
+                    )}
+
+                    <IconButton size="xs" icon={<MdDelete size={13}/>}
+                      colorScheme="red" variant="ghost" aria-label="Remove"
+                      onClick={() => removeFeature(f.key)} />
+                  </HStack>
+                ))}
+                {selectedFeatures.length === 0 && (
+                  <Text fontSize="xs" color={subText} textAlign="center" py={2}>
+                    No features added yet — pick from the dropdown above
+                  </Text>
+                )}
+              </VStack>
+            </Box>
+
+          </VStack>
         </ModalBody>
 
         <ModalFooter borderTopWidth="1px" gap={3}>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button colorScheme="blue" onClick={save} isLoading={saving}
+          <Button colorScheme="purple" onClick={save} isLoading={saving}
             loadingText="Saving…" borderRadius="xl">
             {isEdit ? "Update Plan" : "Create Plan"}
           </Button>
@@ -340,6 +433,7 @@ function PlanModal({ plan, onClose, onSaved }) {
     </Modal>
   );
 }
+
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PLAN CARD — shown in the Plans tab

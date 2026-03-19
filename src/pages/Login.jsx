@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../api";
 import { useAuth } from "../context/AuthContext";
 import { AiOutlineEye, AiOutlineEyeInvisible } from "react-icons/ai";
 import { useColorModeValue } from "@chakra-ui/react";
 
-const SUPERADMIN_EMAIL = "admin@taskapp.com"; // change if you use a different email
+const SUPERADMIN_EMAIL = "admin@taskapp.com";
 
 function Login() {
   const { login } = useAuth();
@@ -35,24 +35,23 @@ function Login() {
   const errClr   = useColorModeValue("#b91c1c", "#fc8181");
   const errBdr   = useColorModeValue("1px solid #fca5a5", "1px solid #c53030");
 
-  // Detect superadmin email (case-insensitive)
+  // ✅ Show deactivated message if redirected from api.js interceptor
+  useEffect(() => {
+    const msg = localStorage.getItem("deactivated_msg");
+    if (msg) {
+      setError(msg);
+      localStorage.removeItem("deactivated_msg");
+    }
+  }, []);
+
   const isSuperAdminEmail = email.trim().toLowerCase() === SUPERADMIN_EMAIL.toLowerCase();
 
   const handleEmailBlur = async () => {
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
-
-    // SuperAdmin: skip company lookup entirely
     if (isSuperAdminEmail) {
-      setCompanies([]);
-      setSelectedCompanyId("");
-      setEmailChecked(false);
-      return;
+      setCompanies([]); setSelectedCompanyId(""); setEmailChecked(false); return;
     }
-
-    setLoadingCompanies(true);
-    setCompanies([]);
-    setSelectedCompanyId("");
-    setEmailChecked(false);
+    setLoadingCompanies(true); setCompanies([]); setSelectedCompanyId(""); setEmailChecked(false);
     try {
       const res  = await api.get(`/auth/companies?email=${encodeURIComponent(email)}`);
       const list = res.data?.companies || [];
@@ -67,11 +66,10 @@ function Login() {
   };
 
   const validate = () => {
-    if (!email.trim())       return "Email is required";
+    if (!email.trim())   return "Email is required";
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "Please enter a valid email address";
-    if (!password)           return "Password is required";
+    if (!password)       return "Password is required";
     if (password.length < 6) return "Password must be at least 6 characters";
-    // SuperAdmin needs no company selection
     if (!isSuperAdminEmail && companies.length > 1 && !selectedCompanyId)
       return "Please select a company";
     return null;
@@ -85,21 +83,23 @@ function Login() {
     setLoading(true);
     try {
       const payload = { email, password };
-      // Only send companyId for normal users
-      if (!isSuperAdminEmail && selectedCompanyId) {
-        payload.companyId = selectedCompanyId;
-      }
+      if (!isSuperAdminEmail && selectedCompanyId) payload.companyId = selectedCompanyId;
 
       const res      = await api.post("/auth/login", payload);
       const userData = res.data?.data || res.data?.staff || res.data;
       if (!userData) throw new Error("Invalid response from server");
-      const token = res.data?.token;
-      login(userData, token);
+
+      // ✅ No token needed — backend sets httpOnly cookie
+      login(userData);
       setSuccess("Login successful! Redirecting...");
       const redirectTo = searchParams.get("redirect") || "/admin";
       setTimeout(() => (window.location.href = redirectTo), 1200);
     } catch (err) {
-      setError(err.response?.data?.message || err.response?.data?.error || "Login failed. Please try again.");
+      setError(
+        err.response?.data?.message ||
+        err.response?.data?.error   ||
+        "Login failed. Please try again."
+      );
     } finally {
       setLoading(false);
     }
@@ -114,7 +114,6 @@ function Login() {
   return (
     <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", background:pageBg }}>
       <form onSubmit={handleSubmit} style={{ width:"380px", padding:"30px", background:cardBg, borderRadius:"10px", boxShadow:"0 10px 25px rgba(0,0,0,0.15)" }}>
-
         <h2 style={{ textAlign:"center", marginBottom:"20px", fontSize:"22px", fontWeight:"bold", color:titleClr }}>
           🔐 Login
         </h2>
@@ -130,101 +129,64 @@ function Login() {
           </div>
         )}
 
-        {/* ── Email ── */}
-        <label style={{ display:"block", fontSize:"13px", fontWeight:"600", color:labelClr, marginBottom:"5px" }}>
-          Email
-        </label>
+        <label style={{ display:"block", fontSize:"13px", fontWeight:"600", color:labelClr, marginBottom:"5px" }}>Email</label>
         <input
-          type="email"
-          placeholder="Enter your email"
-          value={email}
-          onChange={e => {
-            setEmail(e.target.value);
-            setEmailChecked(false);
-            setCompanies([]);
-            setSelectedCompanyId("");
-          }}
-          onBlur={handleEmailBlur}
-          required
+          type="email" placeholder="Enter your email" value={email}
+          onChange={e => { setEmail(e.target.value); setEmailChecked(false); setCompanies([]); setSelectedCompanyId(""); }}
+          onBlur={handleEmailBlur} required
           style={{ ...inputStyle, marginBottom:"15px" }}
         />
 
-        {/* ── SuperAdmin badge ── */}
         {isSuperAdminEmail && (
           <div style={{ fontSize:"13px", color:"#92400e", background:"#fffbeb", border:"1px solid #fcd34d", borderRadius:"6px", padding:"8px 12px", marginBottom:"12px", display:"flex", alignItems:"center", gap:"8px" }}>
             ⭐ <span>Logging in as <strong>Super Admin</strong></span>
           </div>
         )}
 
-        {/* ── Company lookup states (hidden for superadmin) ── */}
         {!isSuperAdminEmail && loadingCompanies && (
           <p style={{ fontSize:"12px", color:"#888", marginBottom:"12px" }}>🔍 Looking up companies...</p>
         )}
-
         {!isSuperAdminEmail && emailChecked && companies.length === 0 && (
           <div style={{ fontSize:"12px", color:errClr, background:errBg, border:errBdr, borderRadius:"6px", padding:"8px 10px", marginBottom:"12px" }}>
             ⚠️ No account found for this email.
           </div>
         )}
-
         {!isSuperAdminEmail && companies.length === 1 && (
           <div style={{ fontSize:"13px", color:"#166534", background:"#f0fdf4", border:"1px solid #86efac", borderRadius:"6px", padding:"8px 10px", marginBottom:"12px", display:"flex", alignItems:"center", gap:"8px" }}>
             {companies[0].logo
               ? <img src={companies[0].logo} alt="" style={{ width:"22px", height:"22px", borderRadius:"4px", objectFit:"cover" }}/>
-              : <span>🏢</span>
-            }
+              : <span>🏢</span>}
             <span>Logging into <strong>{companies[0].name}</strong></span>
           </div>
         )}
-
         {!isSuperAdminEmail && companies.length > 1 && (
           <>
-            <label style={{ display:"block", fontSize:"13px", fontWeight:"600", color:labelClr, marginBottom:"5px" }}>
-              Select Company
-            </label>
+            <label style={{ display:"block", fontSize:"13px", fontWeight:"600", color:labelClr, marginBottom:"5px" }}>Select Company</label>
             <div style={{ marginBottom:"15px", display:"flex", flexDirection:"column", gap:"8px" }}>
               {companies.map(c => (
-                <div
-                  key={c._id}
-                  onClick={() => setSelectedCompanyId(c._id)}
-                  style={{
-                    display:"flex", alignItems:"center", gap:"10px",
-                    padding:"10px 12px", borderRadius:"8px", cursor:"pointer",
+                <div key={c._id} onClick={() => setSelectedCompanyId(c._id)}
+                  style={{ display:"flex", alignItems:"center", gap:"10px", padding:"10px 12px", borderRadius:"8px", cursor:"pointer",
                     border: selectedCompanyId === c._id ? "2px solid #924485" : inputBdr,
-                    background: selectedCompanyId === c._id ? (inputBg === "#ffffff" ? "#fdf4ff" : "#2d1f30") : inputBg,
-                    transition:"all 0.2s",
-                  }}
-                >
+                    background: selectedCompanyId === c._id ? (inputBg === "#ffffff" ? "#fdf4ff" : "#2d1f30") : inputBg, transition:"all 0.2s" }}>
                   {c.logo
                     ? <img src={c.logo} alt="" style={{ width:"28px", height:"28px", borderRadius:"6px", objectFit:"cover" }}/>
-                    : <div style={{ width:"28px", height:"28px", borderRadius:"6px", background:"#924485", display:"flex", alignItems:"center", justifyContent:"center", color:"white", fontSize:"12px", fontWeight:"bold" }}>
-                        {c.name.charAt(0).toUpperCase()}
-                      </div>
-                  }
+                    : <div style={{ width:"28px", height:"28px", borderRadius:"6px", background:"#924485", display:"flex", alignItems:"center", justifyContent:"center", color:"white", fontSize:"12px", fontWeight:"bold" }}>{c.name.charAt(0).toUpperCase()}</div>}
                   <div>
                     <div style={{ fontSize:"13px", fontWeight:"600", color:inputClr }}>{c.name}</div>
                     <div style={{ fontSize:"11px", color:"#888" }}>{c.email}</div>
                   </div>
-                  {selectedCompanyId === c._id && (
-                    <span style={{ marginLeft:"auto", color:"#924485", fontWeight:"bold" }}>✓</span>
-                  )}
+                  {selectedCompanyId === c._id && <span style={{ marginLeft:"auto", color:"#924485", fontWeight:"bold" }}>✓</span>}
                 </div>
               ))}
             </div>
           </>
         )}
 
-        {/* ── Password ── */}
-        <label style={{ display:"block", fontSize:"13px", fontWeight:"600", color:labelClr, marginBottom:"5px" }}>
-          Password
-        </label>
+        <label style={{ display:"block", fontSize:"13px", fontWeight:"600", color:labelClr, marginBottom:"5px" }}>Password</label>
         <div style={{ position:"relative", marginBottom:"20px" }}>
           <input
-            type={showPassword ? "text" : "password"}
-            placeholder="Enter your password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            required
+            type={showPassword ? "text" : "password"} placeholder="Enter your password"
+            value={password} onChange={e => setPassword(e.target.value)} required
             style={{ ...inputStyle, padding:"10px 40px 10px 10px" }}
           />
           <span onClick={() => setShowPassword(!showPassword)}

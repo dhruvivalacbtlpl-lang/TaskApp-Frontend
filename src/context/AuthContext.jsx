@@ -23,6 +23,7 @@ export const AuthProvider = ({ children }) => {
   const projectsFetchedForUser = useRef(null);
   const profileFetched         = useRef(false);
 
+  // ── Refresh profile from server (uses httpOnly cookie — no token needed) ──
   const refreshProfile = async () => {
     try {
       const res = await api.get("/auth/profile");
@@ -31,7 +32,7 @@ export const AuthProvider = ({ children }) => {
     } catch (err) {
       console.error("Profile refresh failed:", err);
       setUser(null);
-      localStorage.removeItem("token");
+      // ✅ FIX: No localStorage token to remove — backend uses httpOnly cookies
     } finally {
       setLoading(false);
     }
@@ -78,6 +79,7 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // ── On mount: fetch profile once (cookie is sent automatically by browser) ─
   useEffect(() => {
     if (profileFetched.current) return;
     profileFetched.current = true;
@@ -109,10 +111,10 @@ export const AuthProvider = ({ children }) => {
     }
   }, [userId, isSuperAdmin]);
 
-  const login = (userData, token) => {
+  // ✅ FIX: login() no longer accepts or stores a token — backend sets httpOnly cookie
+  const login = (userData) => {
     setUser(userData);
     profileFetched.current = true;
-    if (token) localStorage.setItem("token", token);
   };
 
   const logout = () => {
@@ -125,14 +127,16 @@ export const AuthProvider = ({ children }) => {
     setSubscriptionPlan(null);
     profileFetched.current         = false;
     projectsFetchedForUser.current = null;
-    localStorage.removeItem("token");
+    // ✅ FIX: No localStorage token — cookie is cleared by the backend /auth/logout endpoint
   };
 
   const hasPermission = (perm) => {
     if (!user || !user.role) return false;
     if (user.isSuperAdmin) return true;
     if (user.role.name?.toLowerCase() === "admin" || user.isOwner) return true;
-    return user.role.permissions?.some(p => p?.toLowerCase().trim() === perm.toLowerCase().trim());
+    return user.role.permissions?.some(
+      p => p?.toLowerCase().trim() === perm.toLowerCase().trim()
+    );
   };
 
   // Helper: check if a feature is available in current plan
