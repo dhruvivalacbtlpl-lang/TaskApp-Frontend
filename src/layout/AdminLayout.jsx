@@ -7,7 +7,6 @@ import {
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import NotificationBell from "../components/NotificationBell";
-import UsageBanner from "../components/UsageBanner";
 import api from "../api";
 import {
   MdDashboard, MdPeople, MdVpnKey, MdSecurity,
@@ -19,11 +18,11 @@ import {
 import { brand } from "../theme";
 
 const COLLAPSED_W = "70px";
-const EXPANDED_W = "240px";
+const EXPANDED_W  = "240px";
 
 function AdminLayout() {
-  const navigate = useNavigate();
-  const location = useLocation();
+  const navigate  = useNavigate();
+  const location  = useLocation();
   const { colorMode, toggleColorMode } = useColorMode();
   const {
     hasPermission, user, logout,
@@ -51,9 +50,7 @@ function AdminLayout() {
     const checkSub = async () => {
       try {
         const r = await api.get("/subscription/my");
-        if (r.data?.isExpired) {
-          navigate("/admin/subscription/expired");
-        }
+        if (r.data?.isExpired) navigate("/admin/subscription/expired");
       } catch (err) {
         if (err?.response?.data?.code === "SUBSCRIPTION_EXPIRED") {
           navigate("/admin/subscription/expired");
@@ -63,10 +60,10 @@ function AdminLayout() {
     checkSub();
   }, [location.pathname, isSuperAdmin, user, navigate]);
 
-  const sidebarBg = useColorModeValue(brand.sidebar || "#1A202C", "gray.900");
-  const topbarBg = useColorModeValue("white", "gray.800");
-  const topbarBorder = useColorModeValue("#e2e8f0", "#2d3748");
-  const contentBg = useColorModeValue("#F7FAFC", "#171923");
+  const sidebarBg    = useColorModeValue(brand.sidebar || "#1A202C", "gray.900");
+  const topbarBg     = useColorModeValue("white",    "gray.800");
+  const topbarBorder = useColorModeValue("#e2e8f0",  "#2d3748");
+  const contentBg    = useColorModeValue("#F7FAFC",  "#171923");
 
   const handleLogout = async () => {
     try { await api.post("/auth/logout"); } finally {
@@ -77,7 +74,8 @@ function AdminLayout() {
 
   return (
     <Flex h="100vh" w="100vw" overflow="hidden">
-      {/* ── SIDEBAR (Fixed Height, Internal Scroll) ────────────────────────── */}
+
+      {/* ── SIDEBAR ───────────────────────────────────────────────────────── */}
       <Box
         w={sidebarOpen ? EXPANDED_W : COLLAPSED_W}
         h="100vh"
@@ -91,9 +89,9 @@ function AdminLayout() {
         overflowY="auto"
         overflowX="hidden"
         css={{
-            '&::-webkit-scrollbar': { width: '4px' },
-            '&::-webkit-scrollbar-track': { background: 'transparent' },
-            '&::-webkit-scrollbar-thumb': { background: 'rgba(255,255,255,0.1)', borderRadius: '10px' },
+          "&::-webkit-scrollbar":       { width: "4px" },
+          "&::-webkit-scrollbar-track": { background: "transparent" },
+          "&::-webkit-scrollbar-thumb": { background: "rgba(255,255,255,0.1)", borderRadius: "10px" },
         }}
       >
         <Flex justify={sidebarOpen ? "space-between" : "center"} align="center" mb="8" px="2">
@@ -120,9 +118,9 @@ function AdminLayout() {
               {sidebarOpen && (
                 <Text fontSize="xs" fontWeight="bold" color="yellow.400" ml="2" mb="1">SUPERADMIN</Text>
               )}
-              <NavItem to="/admin/companies" icon={MdDomain} label="Companies" sidebarOpen={sidebarOpen} />
-              <NavItem to="/admin/subscriptions" icon={MdCardMembership} label="Subscriptions" sidebarOpen={sidebarOpen} />
-              <NavItem to="/admin/subscription/audit-log" icon={MdHistory} label="Audit Logs" sidebarOpen={sidebarOpen} />
+              <NavItem to="/admin/companies"             icon={MdDomain}         label="Companies"     sidebarOpen={sidebarOpen} />
+              <NavItem to="/admin/subscriptions"         icon={MdCardMembership} label="Subscriptions" sidebarOpen={sidebarOpen} />
+              <NavItem to="/admin/subscription/audit-log" icon={MdHistory}       label="Audit Logs"    sidebarOpen={sidebarOpen} />
             </>
           )}
 
@@ -142,10 +140,10 @@ function AdminLayout() {
           )}
 
           {(isSuperAdmin || isAdmin || hasPermission("staff_read")) && (
-            <NavItem to="/admin/staff" icon={MdPeople} label="Staff" sidebarOpen={sidebarOpen} />
+            <NavItem to="/admin/staff"       icon={MdPeople}   label="Staff"       sidebarOpen={sidebarOpen} />
           )}
           {(isAdmin || hasPermission("role_read")) && (
-            <NavItem to="/admin/roles" icon={MdVpnKey} label="Roles" sidebarOpen={sidebarOpen} />
+            <NavItem to="/admin/roles"       icon={MdVpnKey}   label="Roles"       sidebarOpen={sidebarOpen} />
           )}
           {(isAdmin || hasPermission("permissions_read")) && (
             <NavItem to="/admin/permissions" icon={MdSecurity} label="Permissions" sidebarOpen={sidebarOpen} />
@@ -173,22 +171,22 @@ function AdminLayout() {
             {projectsOpen && sidebarOpen && (
               <VStack align="stretch" pl="10" mt="1" spacing="1">
                 {(isSuperAdmin || isAdmin || hasPermission("project_read")) && (
-                  <SubNavItem to="/admin/projects" icon={MdFolderOpen} label="All Projects" />
+                  <SubNavItem to="/admin/projects"    icon={MdFolderOpen}  label="All Projects" />
                 )}
                 {(isSuperAdmin || isAdmin || hasPermission("project_read")) && (
-                  <SubNavItem to="/admin/team" icon={MdPeople} label="Project Team" />
+                  <SubNavItem to="/admin/team"        icon={MdPeople}      label="Project Team" />
                 )}
                 {(isSuperAdmin || isAdmin || hasPermission("task_read")) && (
-                  <SubNavItem to="/admin/tasks" icon={MdCheckBox} label="Tasks" />
+                  <SubNavItem to="/admin/tasks"       icon={MdCheckBox}    label="Tasks" />
                 )}
                 {(isSuperAdmin || isAdmin || hasPermission("taskstatus_read")) && (
-                  <SubNavItem to="/admin/task-status" icon={MdLabel} label="Task Status" />
+                  <SubNavItem to="/admin/task-status" icon={MdLabel}       label="Task Status" />
                 )}
                 {(isSuperAdmin || isAdmin || hasPermission("issues_read")) && (
-                  <SubNavItem to="/admin/issues" icon={MdBugReport} label="Issues" />
+                  <SubNavItem to="/admin/issues"      icon={MdBugReport}   label="Issues" />
                 )}
                 {(isSuperAdmin || isAdmin || hasPermission("document_read")) && (
-                  <SubNavItem to="/admin/documents" icon={MdDescription} label="Documents" />
+                  <SubNavItem to="/admin/documents"   icon={MdDescription} label="Documents" />
                 )}
               </VStack>
             )}
@@ -196,26 +194,23 @@ function AdminLayout() {
         </VStack>
       </Box>
 
-      {/* ── MAIN AREA (Locked Height) ──────────────────────────────────────── */}
+      {/* ── MAIN AREA ─────────────────────────────────────────────────────── */}
       <Flex flex="1" direction="column" h="100vh" overflow="hidden">
-        
-        {/* TOPBAR (Sticky) */}
+
+        {/* TOPBAR */}
         <Flex
-          h="70px"
-          minH="70px"
+          h="70px" minH="70px"
           bg={topbarBg}
-          borderBottom="1px solid"
-          borderColor={topbarBorder}
-          px="6"
-          align="center"
-          justify="space-between"
-          boxShadow="sm"
-          zIndex="15"
+          borderBottom="1px solid" borderColor={topbarBorder}
+          px="6" align="center" justify="space-between"
+          boxShadow="sm" zIndex="15"
         >
           <HStack spacing={4}>
             {isSuperAdmin ? (
               <HStack spacing={3}>
-                <Badge colorScheme="yellow" fontSize="xs" px="2" py="1" borderRadius="md">SUPERADMIN</Badge>
+                <Badge colorScheme="yellow" fontSize="xs" px="2" py="1" borderRadius="md">
+                  SUPERADMIN
+                </Badge>
                 <Select
                   size="sm" w="220px" variant="filled" borderRadius="md"
                   value={selectedCompany?._id || ""}
@@ -241,7 +236,9 @@ function AdminLayout() {
                   {projects.map(p => <option key={p._id} value={p._id}>{p.name}</option>)}
                 </Select>
               ) : (
-                <Text fontSize="sm" color="gray.400" fontWeight="medium">No active projects found</Text>
+                <Text fontSize="sm" color="gray.400" fontWeight="medium">
+                  No active projects found
+                </Text>
               )
             )}
           </HStack>
@@ -266,63 +263,76 @@ function AdminLayout() {
                 </HStack>
               </MenuButton>
               <MenuList border="none" boxShadow="xl" zIndex="25">
-                <MenuItem icon={<MdPerson size={18}/>} onClick={() => navigate("/admin/profile")}>My Profile</MenuItem>
+                <MenuItem icon={<MdPerson size={18}/>}
+                  onClick={() => navigate("/admin/profile")}>
+                  My Profile
+                </MenuItem>
                 {!isSuperAdmin && (
                   <>
-                    <MenuItem icon={<MdBusiness size={18}/>} onClick={() => navigate("/admin/company-profile")}>Company Profile</MenuItem>
+                    <MenuItem icon={<MdBusiness size={18}/>}
+                      onClick={() => navigate("/admin/company-profile")}>
+                      Company Profile
+                    </MenuItem>
                     {(isAdmin || isOwner) && (
-                      <MenuItem icon={<MdSettings size={18}/>} onClick={() => navigate("/admin/company-settings")}>Company Settings</MenuItem>
+                      <MenuItem icon={<MdSettings size={18}/>}
+                        onClick={() => navigate("/admin/company-settings")}>
+                        Company Settings
+                      </MenuItem>
                     )}
                     {(isAdmin || isOwner) && (
-                      <MenuItem icon={<MdCreditCard size={18}/>} onClick={() => navigate("/admin/subscription/current")}>My Subscription</MenuItem>
+                      <MenuItem icon={<MdCreditCard size={18}/>}
+                        onClick={() => navigate("/admin/subscription/current")}>
+                        My Subscription
+                      </MenuItem>
                     )}
                   </>
                 )}
                 <Divider />
-                <MenuItem icon={<MdLogout size={18}/>} color="red.500" onClick={handleLogout}>Logout</MenuItem>
+                <MenuItem icon={<MdLogout size={18}/>} color="red.500" onClick={handleLogout}>
+                  Logout
+                </MenuItem>
               </MenuList>
             </Menu>
           </HStack>
         </Flex>
 
-        {/* ── CONTENT AREA (The only scrolling part) ── */}
-        <Box 
-          flex="1" 
-          bg={contentBg} 
-          overflowY="auto" 
+        {/* CONTENT AREA */}
+        <Box
+          flex="1"
+          bg={contentBg}
+          overflowY="auto"
           position="relative"
           css={{
-            '&::-webkit-scrollbar': { width: '6px' },
-            '&::-webkit-scrollbar-track': { background: 'transparent' },
-            '&::-webkit-scrollbar-thumb': { background: 'rgba(0,0,0,0.1)', borderRadius: '10px' },
+            "&::-webkit-scrollbar":       { width: "6px" },
+            "&::-webkit-scrollbar-track": { background: "transparent" },
+            "&::-webkit-scrollbar-thumb": { background: "rgba(0,0,0,0.1)", borderRadius: "10px" },
           }}
         >
-          {!isSuperAdmin && (
-            <Box px="8" pt="5" pb="0">
-              <UsageBanner />
-            </Box>
-          )}
-          <Box p="8" pt={!isSuperAdmin ? "4" : "8"}>
+          <Box p="8">
             <Outlet />
           </Box>
         </Box>
+
       </Flex>
     </Flex>
   );
 }
 
-// Helpers
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function NavItem({ to, icon: Icon, label, sidebarOpen, end }) {
   return (
     <Tooltip label={label} placement="right" isDisabled={sidebarOpen} hasArrow>
-      <NavLink to={to} end={end}
+      <NavLink
+        to={to} end={end}
         style={({ isActive }) => ({
           display: "flex", alignItems: "center", padding: "12px",
           borderRadius: "10px", textDecoration: "none",
-          background: isActive ? "rgba(255,255,255,0.15)" : "transparent",
-          color: isActive ? "white" : "rgba(255,255,255,0.7)",
-          fontWeight: isActive ? "600" : "400", transition: "0.2s",
-        })}>
+          background:  isActive ? "rgba(255,255,255,0.15)" : "transparent",
+          color:       isActive ? "white" : "rgba(255,255,255,0.7)",
+          fontWeight:  isActive ? "600" : "400",
+          transition:  "0.2s",
+        })}
+      >
         <Icon size={22} />
         {sidebarOpen && <Text ml="3" fontSize="14px">{label}</Text>}
       </NavLink>
@@ -332,13 +342,16 @@ function NavItem({ to, icon: Icon, label, sidebarOpen, end }) {
 
 function SubNavItem({ to, icon: Icon, label }) {
   return (
-    <NavLink to={to}
+    <NavLink
+      to={to}
       style={({ isActive }) => ({
         display: "flex", alignItems: "center", gap: "10px",
         padding: "8px 0px", fontSize: "13px",
-        color: isActive ? "white" : "rgba(255,255,255,0.6)",
-        fontWeight: isActive ? "600" : "400", transition: "0.2s",
-      })}>
+        color:      isActive ? "white" : "rgba(255,255,255,0.6)",
+        fontWeight: isActive ? "600" : "400",
+        transition: "0.2s",
+      })}
+    >
       <Icon size={16} />
       <Text>{label}</Text>
     </NavLink>

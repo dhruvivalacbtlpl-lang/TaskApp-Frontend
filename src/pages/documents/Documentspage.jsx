@@ -32,18 +32,29 @@ const fmtSize = (bytes) => {
   return `${(bytes/1048576).toFixed(1)} MB`;
 };
 
+// ── Check if doc should open in the page editor ────────────────────────────────
+// ✅ FIX: now checks documentType field (new docs) AND legacy content field (old docs)
+const isEditorDoc = (doc) => {
+  if (doc.documentType === "docx" || doc.documentType === "txt") return true;
+  if (!doc.file?.url && !!doc.content) return true;  // legacy text docs
+  return false;
+};
+
 // Returns icon + color + label for a document
 const docTypeMeta = (doc) => {
-  if (!doc.file?.mimetype && doc.content) {
-    return { icon: MdTextFields, color: "purple", label: "TEXT", scheme: "purple" };
-  }
+  // New docs with documentType
+  if (doc.documentType === "docx") return { icon: MdDescription, color: "#3182ce", label: "DOCX", scheme: "blue" };
+  if (doc.documentType === "txt")  return { icon: MdTextFields,  color: "#718096", label: "TXT",  scheme: "gray" };
+  // Legacy: content-only docs
+  if (!doc.file?.mimetype && doc.content) return { icon: MdTextFields, color: "purple", label: "TEXT", scheme: "purple" };
+  // File-based docs
   const m = doc.file?.mimetype || "";
-  if (m.includes("pdf"))                                    return { icon: MdPictureAsPdf,  color: "#e53e3e", label: "PDF",   scheme: "red"    };
-  if (m.includes("word") || m.includes("document"))        return { icon: MdDescription,   color: "#3182ce", label: "DOCX",  scheme: "blue"   };
-  if (m.includes("excel") || m.includes("sheet"))          return { icon: MdTableChart,     color: "#38a169", label: "XLSX",  scheme: "green"  };
-  if (m.includes("presentation") || m.includes("powerpoint")) return { icon: MdSlideshow,  color: "#dd6b20", label: "PPTX",  scheme: "orange" };
-  if (m.includes("image"))                                  return { icon: MdImage,          color: "#805ad5", label: "IMG",   scheme: "purple" };
-  if (m.includes("text"))                                   return { icon: MdTextFields,     color: "#718096", label: "TXT",   scheme: "gray"   };
+  if (m.includes("pdf"))                                       return { icon: MdPictureAsPdf, color: "#e53e3e", label: "PDF",   scheme: "red"    };
+  if (m.includes("word") || m.includes("document"))           return { icon: MdDescription,  color: "#3182ce", label: "DOCX",  scheme: "blue"   };
+  if (m.includes("excel") || m.includes("sheet"))             return { icon: MdTableChart,   color: "#38a169", label: "XLSX",  scheme: "green"  };
+  if (m.includes("presentation") || m.includes("powerpoint")) return { icon: MdSlideshow,   color: "#dd6b20", label: "PPTX",  scheme: "orange" };
+  if (m.includes("image"))                                     return { icon: MdImage,        color: "#805ad5", label: "IMG",   scheme: "purple" };
+  if (m.includes("text"))                                      return { icon: MdTextFields,   color: "#718096", label: "TXT",   scheme: "gray"   };
   return { icon: MdAttachFile, color: "#718096", label: "FILE", scheme: "gray" };
 };
 
@@ -54,35 +65,24 @@ export default function DocumentsPage() {
   const { user, hasPermission, selectedProject } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // ── Data ───────────────────────────────────────────────────────────────────
   const [docs,            setDocs]            = useState([]);
   const [loading,         setLoading]         = useState(true);
   const [staff,           setStaff]           = useState([]);
-
-  // ── Upload modal form ──────────────────────────────────────────────────────
   const [uploadForm,      setUploadForm]      = useState(emptyUpload);
   const [uploadErrors,    setUploadErrors]    = useState({});
   const [uploadSaving,    setUploadSaving]    = useState(false);
   const [editingId,       setEditingId]       = useState(null);
   const [dragOver,        setDragOver]        = useState(false);
-
-  // ── File state ─────────────────────────────────────────────────────────────
   const [selectedFile,    setSelectedFile]    = useState(null);
   const [removeFile,      setRemoveFile]      = useState(false);
   const [existingFile,    setExistingFile]    = useState(null);
   const fileInputRef = useRef(null);
-
-  // ── Delete ─────────────────────────────────────────────────────────────────
   const [deleteId,        setDeleteId]        = useState(null);
   const [deleting,        setDeleting]        = useState(false);
-
-  // ── Pagination ─────────────────────────────────────────────────────────────
   const [currentPage,     setCurrentPage]     = useState(1);
   const [pageSize,        setPageSize]        = useState(10);
   const [searchQuery,     setSearchQuery]     = useState("");
   const [statusFilter,    setStatusFilter]    = useState("all");
-
-  // ── Access requests ────────────────────────────────────────────────────────
   const [accessDoc,             setAccessDoc]             = useState(null);
   const [accessMessage,         setAccessMessage]         = useState("");
   const [accessSending,         setAccessSending]         = useState(false);
@@ -92,7 +92,6 @@ export default function DocumentsPage() {
   const [highlightedDocId,      setHighlightedDocId]      = useState(null);
   const [focusedRequest,        setFocusedRequest]        = useState(null);
 
-  // ── Modals ─────────────────────────────────────────────────────────────────
   const { isOpen: isUploadOpen,   onOpen: onUploadOpen,   onClose: onUploadClose   } = useDisclosure();
   const { isOpen: isDeleteOpen,   onOpen: onDeleteOpen,   onClose: onDeleteClose   } = useDisclosure();
   const { isOpen: isAccessOpen,   onOpen: onAccessOpen,   onClose: onAccessClose   } = useDisclosure();
@@ -105,7 +104,6 @@ export default function DocumentsPage() {
   const canUpdate = isAdmin || hasPermission("document_update");
   const canDelete = isAdmin || hasPermission("document_delete");
 
-  // ── Colors ─────────────────────────────────────────────────────────────────
   const cardBg       = useColorModeValue("white",      "gray.800");
   const theadBg      = useColorModeValue("#bee3f8",    "#2a4365");
   const theadColor   = useColorModeValue("gray.600",   "white");
@@ -130,10 +128,8 @@ export default function DocumentsPage() {
   const dropzoneBg   = useColorModeValue("gray.50",    "gray.700");
   const dropzoneBdr  = useColorModeValue("gray.200",   "gray.600");
 
-  // ── Initial fetch ──────────────────────────────────────────────────────────
   useEffect(() => { fetchAll(); }, []); // eslint-disable-line
 
-  // ── Email link: single request popup ──────────────────────────────────────
   useEffect(() => {
     const requestId = searchParams.get("requestId");
     if (!requestId || !isAdmin) return;
@@ -153,7 +149,6 @@ export default function DocumentsPage() {
     openFocused();
   }, [isAdmin, pendingRequests]); // eslint-disable-line
 
-  // ── Email link: verify token ───────────────────────────────────────────────
   useEffect(() => {
     const token = searchParams.get("token");
     const docId = searchParams.get("docId");
@@ -179,7 +174,6 @@ export default function DocumentsPage() {
     verify();
   }, []); // eslint-disable-line
 
-  // ── Fetch all ──────────────────────────────────────────────────────────────
   const fetchAll = async () => {
     try {
       setLoading(true);
@@ -198,14 +192,11 @@ export default function DocumentsPage() {
     }
   };
 
-  // ── Access helpers ─────────────────────────────────────────────────────────
   const isAssignedToDoc  = (doc) => doc.assignee?._id === user?._id || doc.assignee === user?._id;
   const isCreatorOfDoc   = (doc) => doc.createdBy?._id === user?._id || doc.createdBy === user?._id;
   const isAllowedUser    = (doc) => doc.allowedUsers?.some(u => (u?._id||u)?.toString() === user?._id?.toString());
   const canReadDoc       = (doc) => isAdmin || isAssignedToDoc(doc) || isCreatorOfDoc(doc) || isAllowedUser(doc);
-  const isTextDoc        = (doc) => !doc.file?.url && !!doc.content;
 
-  // ── Filter + paginate ──────────────────────────────────────────────────────
   const projectFiltered = selectedProject
     ? docs.filter(d => d.project?._id === selectedProject._id)
     : docs;
@@ -224,7 +215,6 @@ export default function DocumentsPage() {
   const paginated      = allDisplayDocs.slice(startIndex, startIndex + pageSize);
   const pendingCount   = pendingRequests.length;
 
-  // ── Upload form validation ─────────────────────────────────────────────────
   const validateUpload = () => {
     const e = {};
     if (!uploadForm.title.trim())                        e.title       = "Title is required.";
@@ -259,7 +249,6 @@ export default function DocumentsPage() {
     onUploadOpen();
   };
 
-  // ── File drag & drop ───────────────────────────────────────────────────────
   const handleDrop = (e) => {
     e.preventDefault();
     setDragOver(false);
@@ -278,7 +267,6 @@ export default function DocumentsPage() {
     setExistingFile(null);
   };
 
-  // ── Save upload ────────────────────────────────────────────────────────────
   const handleUploadSave = async () => {
     const e = validateUpload();
     if (Object.keys(e).length) { setUploadErrors(e); return; }
@@ -318,7 +306,6 @@ export default function DocumentsPage() {
     }
   };
 
-  // ── Delete ─────────────────────────────────────────────────────────────────
   const handleDelete = async () => {
     setDeleting(true);
     try {
@@ -334,7 +321,6 @@ export default function DocumentsPage() {
     }
   };
 
-  // ── Request access ─────────────────────────────────────────────────────────
   const handleRequestAccess = async () => {
     if (!accessDoc) return;
     setAccessSending(true);
@@ -355,7 +341,6 @@ export default function DocumentsPage() {
     }
   };
 
-  // ── Module access ──────────────────────────────────────────────────────────
   const handleModuleAccess = async () => {
     setModuleAccessSending(true);
     try {
@@ -369,7 +354,6 @@ export default function DocumentsPage() {
     }
   };
 
-  // ── Grant/deny access ──────────────────────────────────────────────────────
   const handleGrantAccess = async (requestId, approve) => {
     try {
       await api.put(`/documents/access-requests/${requestId}`, {
@@ -391,7 +375,6 @@ export default function DocumentsPage() {
     <Flex justify="center" py={20}><Spinner size="xl" color="brand.500" /></Flex>
   );
 
-  // ── RENDER ─────────────────────────────────────────────────────────────────
   return (
     <Box>
 
@@ -413,7 +396,6 @@ export default function DocumentsPage() {
           </Flex>
 
           <HStack spacing={2} flexWrap="wrap">
-            {/* Admin: access requests badge */}
             {isAdmin && (
               <Button leftIcon={<MdLockOpen size={16}/>} colorScheme="orange"
                 size="sm" variant="outline" onClick={onRequestsOpen} position="relative">
@@ -426,23 +408,15 @@ export default function DocumentsPage() {
                 )}
               </Button>
             )}
-
-            {/* Upload button — file upload modal */}
             <Tooltip label={!selectedProject ? "Select a project first" : ""} isDisabled={!!selectedProject}>
-              <Button
-                leftIcon={<MdUploadFile size={16}/>}
-                colorScheme="green" size="sm" variant="outline"
+              <Button leftIcon={<MdUploadFile size={16}/>} colorScheme="green" size="sm" variant="outline"
                 isDisabled={!selectedProject}
                 onClick={() => { resetUploadModal(); onUploadOpen(); }}>
                 Upload
               </Button>
             </Tooltip>
-
-            {/* Create button — navigates to CKEditor page */}
             <Tooltip label={!selectedProject ? "Select a project first" : ""} isDisabled={!!selectedProject}>
-              <Button
-                leftIcon={<MdNoteAdd size={16}/>}
-                colorScheme="brand" size="sm"
+              <Button leftIcon={<MdNoteAdd size={16}/>} colorScheme="brand" size="sm"
                 isDisabled={!selectedProject}
                 onClick={() => navigate("/admin/documents/editor")}>
                 Create
@@ -454,7 +428,7 @@ export default function DocumentsPage() {
 
       {/* ── NO PROJECT BANNER ─────────────────────────────────────────────── */}
       {!selectedProject && (
-        <Box mb={4} p={4} bg={warnBg} borderRadius="xl" border={`1px solid`} borderColor={warnBdr}>
+        <Box mb={4} p={4} bg={warnBg} borderRadius="xl" border="1px solid" borderColor={warnBdr}>
           <Flex align="center" gap={3}>
             <MdFolder size={20} color="#d69e2e" />
             <Box>
@@ -536,11 +510,13 @@ export default function DocumentsPage() {
               </Thead>
               <Tbody>
                 {paginated.map((doc, idx) => {
-                  const canSee       = canReadDoc(doc);
+                  const canSee        = canReadDoc(doc);
                   const isHighlighted = doc._id === highlightedDocId;
-                  const typeMeta     = docTypeMeta(doc);
-                  const TypeIcon     = typeMeta.icon;
-                  const isTxt        = isTextDoc(doc);
+                  const typeMeta      = docTypeMeta(doc);
+                  const TypeIcon      = typeMeta.icon;
+
+                  // ✅ FIX: use isEditorDoc() which checks documentType AND legacy content
+                  const openInEditor  = isEditorDoc(doc);
 
                   // Locked row
                   if (!canSee) return (
@@ -598,7 +574,7 @@ export default function DocumentsPage() {
                         <Text fontSize="xs" color={subColor} noOfLines={2}>{doc.description}</Text>
                       </Td>
 
-                      {/* Type badge with icon */}
+                      {/* Type */}
                       <Td>
                         <Flex align="center" gap={1.5}>
                           <TypeIcon size={14} color={typeMeta.color}/>
@@ -622,9 +598,7 @@ export default function DocumentsPage() {
                         {doc.assignee?.name ? (
                           <Flex align="center" gap={2}>
                             <Avatar name={doc.assignee.name} size="xs" bg="brand.500" color="white"/>
-                            <Text fontSize="xs" color={textColor} whiteSpace="nowrap">
-                              {doc.assignee.name}
-                            </Text>
+                            <Text fontSize="xs" color={textColor} whiteSpace="nowrap">{doc.assignee.name}</Text>
                           </Flex>
                         ) : <Text fontSize="xs" color={subColor}>—</Text>}
                       </Td>
@@ -634,9 +608,7 @@ export default function DocumentsPage() {
                         <Flex align="center" gap={2}>
                           <Avatar name={doc.createdBy?.name} size="xs" bg="purple.400" color="white"/>
                           <Box>
-                            <Text fontSize="xs" color={textColor} whiteSpace="nowrap">
-                              {doc.createdBy?.name||"—"}
-                            </Text>
+                            <Text fontSize="xs" color={textColor} whiteSpace="nowrap">{doc.createdBy?.name||"—"}</Text>
                             {isCreatorOfDoc(doc) && (
                               <Badge colorScheme="purple" fontSize="9px" borderRadius="full">you</Badge>
                             )}
@@ -646,47 +618,31 @@ export default function DocumentsPage() {
 
                       {/* Project */}
                       <Td>
-                        <Text fontSize="xs" color={subColor} noOfLines={1}>
-                          {doc.project?.name || "—"}
-                        </Text>
+                        <Text fontSize="xs" color={subColor} noOfLines={1}>{doc.project?.name || "—"}</Text>
                       </Td>
 
                       {/* File / View */}
                       <Td>
-                        {isTxt ? (
-                          /* Text doc — View navigates to viewer page */
-                          <Button size="xs" colorScheme="purple" variant="outline"
+                        {openInEditor ? (
+                          /* ✅ Editor docs — View button */
+                          <Button size="xs" colorScheme="blue" variant="outline"
                             leftIcon={<MdVisibility size={12}/>}
-                            onClick={() => navigate(`/admin/documents/view/${doc._id}`)}>
-                            View
+                            onClick={() => navigate(`/admin/documents/editor/${doc._id}`)}>
+                            Open
                           </Button>
                         ) : doc.file?.url ? (() => {
-                          const BASE = (import.meta.env.VITE_API_URL || "https://w2ml73xv-5000.inc1.devtunnels.ms").replace(/\/api$/, "");
+                          const BASE = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/api$/, "");
                           const fileUrl = `${BASE}${doc.file.url}`;
-                          const m = doc.file.mimetype || "";
-                          const isOffice = m.includes("word") || m.includes("excel") ||
-                            m.includes("sheet") || m.includes("presentation") || m.includes("powerpoint");
-                          const isPdf   = m.includes("pdf");
-                          const isImg   = m.includes("image");
-
                           return (
                             <HStack spacing={1}>
-                              {/* View — opens in browser (works for PDF + images) */}
-                              <Tooltip label={isOffice ? "Opens in browser (may download)" : "View in browser"}>
-                                <Button as="a" href={fileUrl} target="_blank"
-                                  rel="noopener noreferrer"
-                                  size="xs" colorScheme="blue" variant="outline"
-                                  leftIcon={<MdVisibility size={11}/>}>
-                                  View
-                                </Button>
-                              </Tooltip>
-                              {/* Download — always triggers OS "open with" dialog */}
-                              <Tooltip label={`Download — opens with your default app`}>
-                                <IconButton as="a" href={fileUrl} download={doc.file.originalName}
-                                  size="xs" colorScheme="green" variant="ghost"
-                                  aria-label="Download"
-                                  icon={<MdDownload size={13}/>}/>
-                              </Tooltip>
+                              <Button as="a" href={fileUrl} target="_blank" rel="noopener noreferrer"
+                                size="xs" colorScheme="blue" variant="outline"
+                                leftIcon={<MdVisibility size={11}/>}>
+                                View
+                              </Button>
+                              <IconButton as="a" href={fileUrl} download={doc.file.originalName}
+                                size="xs" colorScheme="green" variant="ghost"
+                                aria-label="Download" icon={<MdDownload size={13}/>}/>
                             </HStack>
                           );
                         })() : (
@@ -706,11 +662,12 @@ export default function DocumentsPage() {
                       <Td textAlign="right">
                         <Flex justify="flex-end" gap={1}>
                           {(canUpdate || isCreatorOfDoc(doc)) && (
-                            <Tooltip label={isTxt ? "Edit in editor" : "Edit"}>
+                            // ✅ FIX: openInEditor check — always opens editor for docx/txt docs
+                            <Tooltip label={openInEditor ? "Edit in editor" : "Edit"}>
                               <IconButton
                                 icon={<MdEdit size={14}/>} size="xs"
                                 colorScheme="brand" variant="ghost" aria-label="Edit"
-                                onClick={() => isTxt
+                                onClick={() => openInEditor
                                   ? navigate(`/admin/documents/editor/${doc._id}`)
                                   : openUploadEdit(doc)
                                 }/>
@@ -732,7 +689,7 @@ export default function DocumentsPage() {
             </Table>
           </TableContainer>
 
-          {/* ── PAGINATION ──────────────────────────────────────────────── */}
+          {/* Pagination */}
           <Flex px={4} py={3} justify="space-between" align="center"
             borderTop={`1px solid ${borderColor}`} wrap="wrap" gap={2}>
             <Text fontSize="sm" color={subColor}>
@@ -749,10 +706,7 @@ export default function DocumentsPage() {
         </Box>
       )}
 
-
-      {/* ══════════════════════════════════════════════════════════════════════
-          MODAL: Upload File
-      ══════════════════════════════════════════════════════════════════════ */}
+      {/* ── MODAL: Upload File ─────────────────────────────────────────────── */}
       <Modal isOpen={isUploadOpen} onClose={() => { onUploadClose(); resetUploadModal(); }}
         isCentered size="xl" scrollBehavior="inside">
         <ModalOverlay />
@@ -766,21 +720,17 @@ export default function DocumentsPage() {
           <ModalCloseButton top={3}/>
           <ModalBody py={5}>
             <VStack spacing={4}>
-
               {selectedProject && (
                 <Box w="100%" p={3} bg="blue.50" borderRadius="lg"
                   border="1px solid" borderColor="blue.200" _dark={{ bg:"blue.900", borderColor:"blue.700" }}>
                   <Flex align="center" gap={2}>
                     <MdFolder size={14} color="#2b6cb0"/>
-                    <Text fontSize="xs" color="blue.700" fontWeight="600"
-                      _dark={{ color:"blue.200" }}>
+                    <Text fontSize="xs" color="blue.700" fontWeight="600" _dark={{ color:"blue.200" }}>
                       Project: {selectedProject.name}
                     </Text>
                   </Flex>
                 </Box>
               )}
-
-              {/* Title */}
               <FormControl isInvalid={!!uploadErrors.title}>
                 <FormLabel fontSize="sm" color={textColor}>Title *</FormLabel>
                 <Input placeholder="Document title" value={uploadForm.title}
@@ -791,8 +741,6 @@ export default function DocumentsPage() {
                   }}/>
                 <FormErrorMessage>{uploadErrors.title}</FormErrorMessage>
               </FormControl>
-
-              {/* Description */}
               <FormControl isInvalid={!!uploadErrors.description}>
                 <FormLabel fontSize="sm" color={textColor}>Description *</FormLabel>
                 <Textarea placeholder="Describe the document…" rows={2}
@@ -804,8 +752,6 @@ export default function DocumentsPage() {
                   }}/>
                 <FormErrorMessage>{uploadErrors.description}</FormErrorMessage>
               </FormControl>
-
-              {/* Status + Assignee */}
               <Grid templateColumns="repeat(2,1fr)" gap={4} w="100%">
                 <FormControl>
                   <FormLabel fontSize="sm" color={textColor}>Status</FormLabel>
@@ -825,8 +771,6 @@ export default function DocumentsPage() {
                   </Select>
                 </FormControl>
               </Grid>
-
-              {/* Drag & Drop zone */}
               <FormControl>
                 <FormLabel fontSize="sm" color={textColor}>
                   <Flex align="center" gap={1}>
@@ -834,18 +778,13 @@ export default function DocumentsPage() {
                     File <Text as="span" color={subColor}>(optional, max 10MB)</Text>
                   </Flex>
                 </FormLabel>
-
-                {/* Existing file display */}
                 {existingFile && !removeFile && !selectedFile && (
-                  <Box p={3} bg={fileBg} borderRadius="lg"
-                    border={`1px solid`} borderColor={fileBdr} mb={2}>
+                  <Box p={3} bg={fileBg} borderRadius="lg" border="1px solid" borderColor={fileBdr} mb={2}>
                     <Flex align="center" justify="space-between">
                       <Flex align="center" gap={2}>
                         <MdAttachFile size={16} color={fileClr}/>
                         <Box>
-                          <Text fontSize="xs" fontWeight="600" color={fileClr} noOfLines={1}>
-                            {existingFile.originalName}
-                          </Text>
+                          <Text fontSize="xs" fontWeight="600" color={fileClr} noOfLines={1}>{existingFile.originalName}</Text>
                           <Text fontSize="xs" color={subColor}>{fmtSize(existingFile.size)}</Text>
                         </Box>
                       </Flex>
@@ -854,18 +793,13 @@ export default function DocumentsPage() {
                     </Flex>
                   </Box>
                 )}
-
-                {/* New file selected display */}
                 {selectedFile && (
-                  <Box p={3} bg={fileBg} borderRadius="lg"
-                    border={`1px solid`} borderColor={fileBdr} mb={2}>
+                  <Box p={3} bg={fileBg} borderRadius="lg" border="1px solid" borderColor={fileBdr} mb={2}>
                     <Flex align="center" justify="space-between">
                       <Flex align="center" gap={2}>
                         <MdAttachFile size={16} color={fileClr}/>
                         <Box>
-                          <Text fontSize="xs" fontWeight="600" color={fileClr} noOfLines={1}>
-                            {selectedFile.name}
-                          </Text>
+                          <Text fontSize="xs" fontWeight="600" color={fileClr} noOfLines={1}>{selectedFile.name}</Text>
                           <Text fontSize="xs" color={subColor}>{fmtSize(selectedFile.size)}</Text>
                         </Box>
                       </Flex>
@@ -875,20 +809,14 @@ export default function DocumentsPage() {
                     </Flex>
                   </Box>
                 )}
-
-                {/* Drop zone */}
                 {!selectedFile && !(existingFile && !removeFile) && (
-                  <Box
-                    onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-                    onDragLeave={() => setDragOver(false)}
-                    onDrop={handleDrop}
+                  <Box onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+                    onDragLeave={() => setDragOver(false)} onDrop={handleDrop}
                     onClick={() => fileInputRef.current?.click()}
-                    bg={dragOver ? dragBg : dropzoneBg}
-                    border="2px dashed"
+                    bg={dragOver ? dragBg : dropzoneBg} border="2px dashed"
                     borderColor={dragOver ? "blue.400" : dropzoneBdr}
                     borderRadius="xl" p={8} textAlign="center" cursor="pointer"
-                    transition="all 0.2s"
-                    _hover={{ borderColor:"blue.300", bg: dragBg }}>
+                    transition="all 0.2s" _hover={{ borderColor:"blue.300", bg: dragBg }}>
                     <MdCloudUpload size={32} color={dragOver ? "#3182ce" : "#a0aec0"}
                       style={{ margin:"0 auto 8px" }}/>
                     <Text fontSize="sm" fontWeight="600" color={dragOver ? "blue.500" : subColor}>
@@ -899,24 +827,10 @@ export default function DocumentsPage() {
                     </Text>
                   </Box>
                 )}
-
                 <input ref={fileInputRef} type="file" style={{ display:"none" }}
                   accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.jpg,.jpeg,.png,.gif,.webp"
                   onChange={e => { const f = e.target.files?.[0]; if (f) processFile(f); }}/>
               </FormControl>
-
-              {uploadForm.assignee && (
-                <Box w="100%" p={3} bg="blue.50" borderRadius="lg"
-                  border="1px solid" borderColor="blue.200"
-                  _dark={{ bg:"blue.900", borderColor:"blue.700" }}>
-                  <Flex align="center" gap={2}>
-                    <MdMail size={14} color="#3b82f6"/>
-                    <Text fontSize="xs" color="blue.700" _dark={{ color:"blue.200" }}>
-                      Assignee will receive an email notification.
-                    </Text>
-                  </Flex>
-                </Box>
-              )}
             </VStack>
           </ModalBody>
           <ModalFooter borderTop={`1px solid ${borderColor}`} gap={2}>
@@ -930,15 +844,12 @@ export default function DocumentsPage() {
         </ModalContent>
       </Modal>
 
-
-      {/* ── MODAL: Delete ──────────────────────────────────────────────────── */}
+      {/* ── MODAL: Delete ─────────────────────────────────────────────────── */}
       <Modal isOpen={isDeleteOpen} onClose={onDeleteClose} isCentered size="sm">
         <ModalOverlay/>
         <ModalContent bg={cardBg} borderRadius="xl">
           <ModalHeader fontSize="md" color={textColor}>Delete Document</ModalHeader>
-          <ModalBody fontSize="sm" color={subColor}>
-            Are you sure? This cannot be undone.
-          </ModalBody>
+          <ModalBody fontSize="sm" color={subColor}>Are you sure? This cannot be undone.</ModalBody>
           <ModalFooter gap={2}>
             <Button size="sm" variant="ghost" onClick={onDeleteClose}>Cancel</Button>
             <Button size="sm" colorScheme="red" isLoading={deleting}
@@ -946,7 +857,6 @@ export default function DocumentsPage() {
           </ModalFooter>
         </ModalContent>
       </Modal>
-
 
       {/* ── MODAL: Request Document Access ────────────────────────────────── */}
       <Modal isOpen={isAccessOpen}
@@ -960,14 +870,9 @@ export default function DocumentsPage() {
           <ModalCloseButton/>
           <ModalBody>
             <VStack spacing={4}>
-              <Box w="100%" p={4} bg={reqBg} borderRadius="lg"
-                border={`1px solid`} borderColor={reqBdr}>
-                <Text fontSize="sm" fontWeight="600" color={textColor} mb={1}>
-                  Restricted Document
-                </Text>
-                <Text fontSize="xs" color={subColor}>
-                  You are not assigned to this document. The admin will be notified via email.
-                </Text>
+              <Box w="100%" p={4} bg={reqBg} borderRadius="lg" border="1px solid" borderColor={reqBdr}>
+                <Text fontSize="sm" fontWeight="600" color={textColor} mb={1}>Restricted Document</Text>
+                <Text fontSize="xs" color={subColor}>You are not assigned to this document. The admin will be notified via email.</Text>
               </Box>
               <FormControl>
                 <FormLabel fontSize="sm" color={textColor}>
@@ -979,83 +884,33 @@ export default function DocumentsPage() {
             </VStack>
           </ModalBody>
           <ModalFooter gap={2}>
-            <Button variant="ghost"
-              onClick={() => { onAccessClose(); setAccessDoc(null); setAccessMessage(""); }}>
-              Cancel
-            </Button>
+            <Button variant="ghost" onClick={() => { onAccessClose(); setAccessDoc(null); setAccessMessage(""); }}>Cancel</Button>
             <Button colorScheme="orange" leftIcon={<MdMail size={14}/>}
-              isLoading={accessSending} onClick={handleRequestAccess}>
-              Send Request
-            </Button>
+              isLoading={accessSending} onClick={handleRequestAccess}>Send Request</Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
 
-
-      {/* ── MODAL: Module Access Request ──────────────────────────────────── */}
-      <Modal isOpen={isModuleOpen} onClose={onModuleClose} isCentered size="md">
-        <ModalOverlay/>
-        <ModalContent bg={cardBg}>
-          <ModalHeader color={textColor}>
-            <Flex align="center" gap={2}><MdLock size={18}/> Request Documents Access</Flex>
-          </ModalHeader>
-          <ModalCloseButton/>
-          <ModalBody>
-            <VStack spacing={4}>
-              <Box w="100%" p={4} bg={reqBg} borderRadius="lg"
-                border={`1px solid`} borderColor={reqBdr}>
-                <Text fontSize="sm" fontWeight="600" color={textColor} mb={1}>
-                  Documents Module
-                </Text>
-                <Text fontSize="xs" color={subColor}>
-                  Your request will be sent to the admin via email.
-                </Text>
-              </Box>
-              <FormControl>
-                <FormLabel fontSize="sm" color={textColor}>
-                  Reason <Text as="span" color={subColor}>(optional)</Text>
-                </FormLabel>
-                <Textarea placeholder="Explain why you need access…" rows={3}
-                  value={moduleAccessMessage}
-                  onChange={e => setModuleAccessMessage(e.target.value)}/>
-              </FormControl>
-            </VStack>
-          </ModalBody>
-          <ModalFooter gap={2}>
-            <Button variant="ghost" onClick={onModuleClose}>Cancel</Button>
-            <Button colorScheme="orange" leftIcon={<MdMail size={14}/>}
-              isLoading={moduleAccessSending} onClick={handleModuleAccess}>
-              Send Request
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
-
-
-      {/* ── MODAL: Pending Access Requests (admin) ────────────────────────── */}
+      {/* ── MODAL: Pending Access Requests ────────────────────────────────── */}
       <Modal isOpen={isRequestsOpen} onClose={onRequestsClose} isCentered size="xl">
         <ModalOverlay/>
         <ModalContent bg={cardBg}>
           <ModalHeader color={textColor}>
             <Flex align="center" gap={2}>
               <MdLockOpen size={18}/> Pending Access Requests
-              {pendingCount > 0 && (
-                <Badge colorScheme="red" borderRadius="full" px={2}>{pendingCount}</Badge>
-              )}
+              {pendingCount > 0 && <Badge colorScheme="red" borderRadius="full" px={2}>{pendingCount}</Badge>}
             </Flex>
           </ModalHeader>
           <ModalCloseButton/>
           <ModalBody>
             {pendingRequests.length === 0 ? (
               <Flex direction="column" align="center" py={10} color={subColor}>
-                <MdCheck size={40}/>
-                <Text fontSize="sm" mt={2}>No pending requests</Text>
+                <MdCheck size={40}/><Text fontSize="sm" mt={2}>No pending requests</Text>
               </Flex>
             ) : (
               <VStack spacing={3} align="stretch">
                 {pendingRequests.map(req => (
-                  <Box key={req._id} p={4} borderRadius="lg"
-                    border={`1px solid`} borderColor={reqBdr} bg={reqBg}>
+                  <Box key={req._id} p={4} borderRadius="lg" border="1px solid" borderColor={reqBdr} bg={reqBg}>
                     <Flex justify="space-between" align="flex-start">
                       <Box flex={1}>
                         <Flex align="center" gap={2} mb={1}>
@@ -1076,13 +931,11 @@ export default function DocumentsPage() {
                       <HStack ml={4}>
                         <Tooltip label="Approve — emails user">
                           <IconButton icon={<MdCheck size={14}/>} size="sm" colorScheme="green"
-                            aria-label="Approve"
-                            onClick={() => handleGrantAccess(req._id, true)}/>
+                            aria-label="Approve" onClick={() => handleGrantAccess(req._id, true)}/>
                         </Tooltip>
                         <Tooltip label="Deny — emails user">
                           <IconButton icon={<MdClose size={14}/>} size="sm" colorScheme="red"
-                            variant="outline" aria-label="Deny"
-                            onClick={() => handleGrantAccess(req._id, false)}/>
+                            variant="outline" aria-label="Deny" onClick={() => handleGrantAccess(req._id, false)}/>
                         </Tooltip>
                       </HStack>
                     </Flex>
@@ -1091,12 +944,9 @@ export default function DocumentsPage() {
               </VStack>
             )}
           </ModalBody>
-          <ModalFooter>
-            <Button variant="ghost" onClick={onRequestsClose}>Close</Button>
-          </ModalFooter>
+          <ModalFooter><Button variant="ghost" onClick={onRequestsClose}>Close</Button></ModalFooter>
         </ModalContent>
       </Modal>
-
 
       {/* ── MODAL: Single Request (email link) ───────────────────────────── */}
       <Modal isOpen={isFocusOpen} onClose={onFocusClose} isCentered size="md">
@@ -1108,24 +958,17 @@ export default function DocumentsPage() {
           <ModalCloseButton/>
           <ModalBody>
             {focusedRequest ? (
-              <Box p={4} borderRadius="lg" border={`1px solid`} borderColor={reqBdr} bg={reqBg}>
+              <Box p={4} borderRadius="lg" border="1px solid" borderColor={reqBdr} bg={reqBg}>
                 <Flex align="center" gap={2} mb={2}>
                   <Avatar name={focusedRequest.user?.name} size="sm" bg="brand.500" color="white"/>
                   <Box>
-                    <Text fontWeight="700" fontSize="sm" color={textColor}>
-                      {focusedRequest.user?.name}
-                    </Text>
+                    <Text fontWeight="700" fontSize="sm" color={textColor}>{focusedRequest.user?.name}</Text>
                     <Badge colorScheme="gray" fontSize="xs">{focusedRequest.user?.email}</Badge>
                   </Box>
                 </Flex>
                 <Text fontSize="sm" color={subColor} mb={1}>
                   Wants access to: <strong style={{ color:textColor }}>{focusedRequest.document?.title}</strong>
                 </Text>
-                {focusedRequest.document?.project?.name && (
-                  <Text fontSize="xs" color={subColor} mb={2}>
-                    {focusedRequest.document.project.name}
-                  </Text>
-                )}
                 {focusedRequest.message && (
                   <Box mt={2} p={3} bg={cardBg} borderRadius="md" border={`1px solid ${borderColor}`}>
                     <Text fontSize="xs" color={subColor} fontWeight="600" mb={1}>Reason:</Text>
